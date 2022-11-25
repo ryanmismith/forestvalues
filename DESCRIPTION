@@ -1,0 +1,10 @@
+Package: forestvalues
+Title: Functions for Forest Econ
+Version: 0.1.1
+Authors@R: 
+    person("Ryan", "Smith", , "rsmith@sevenislands.com", role = c("aut", "cre"))
+Description: Econ functions for Forestry (Single age and multi-cohort stands)
+License: not for commercial or non-academic uses.
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.2
