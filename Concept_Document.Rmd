@@ -23,9 +23,9 @@ A solution to this problem is to build an R package to analyze single actions an
 
 The R package I built is called forestvalues. This package allows for individual actions to be analyzed along with complex scenarios, including one-time costs or revenues, recurring periodic costs or revenues, and annual costs or revenues. This package allows the same form to be input with different settings for comparing potential outcomes given different management decisions or timescales.
 
-While I recognize this is not a traditional paper, this project provides tools to quickly assign values to yield curves for optimization in linear programming or simple comparison of management decisions. An example would be deciding whether a carbon project with revenues from carbon credits but a delayed harvest rotation and decreased allowable cut is a wise economic decision compared to a business-as-usual scenario.
+This project provides tools to quickly assign values to yield curves for optimization in linear programming or simple comparison of management decisions. An example would be deciding whether a carbon project with revenues from carbon credits but a delayed harvest rotation and decreased allowable cut is a wise economic decision compared to a business-as-usual scenario.
 
-The final package can be viewed at **github.com/ryanmismith/forestvalues** - each function will contain the required documentation and examples to be used by parties other than myself. Below I will outline the essential functions that will allow me to build a script for processing a static form and then display the results of a comparison between a carbon project and business-as-usual scenario using the written package.
+The  package can be viewed at **github.com/ryanmismith/forestvalues** - each function will contain the required documentation and examples to be used by parties other than myself. Below I will outline the essential functions that will allow me to build a script for processing a static form and then display the results of a comparison between a carbon project and business-as-usual scenario using the written package.
 
 ## Essential Functions
 
@@ -698,4 +698,4 @@ This may have seemed like a lot of typing and excessive work for what can be don
 
 The other use for a package of this nature is the ability to build interactive web applications using the Shiny platform in R. Using this platform you can make a simple application that prints out the canned form, allows a user to upload it, and then it kicks out the canned report without the user ever interfacing with R or any other environment that may seem unfamiliar.
 
-I know this is an unconventional final report, but you had indicated that we can work on something that is part of a project or existing workflow. I have taken this opportunity to flesh out this package for use in the future. While it is still a bit bare bones now, it provides a framework for more complex analysis in the future.
+ While it is still a bit bare bones now, it provides a framework for more complex analysis in the future.
