@@ -13,7 +13,7 @@ SingleRotationVal(Age, Stumpage, Volume, Cost, Discount)
 
 \item{Volume}{The yield in a given year}
 
-\item{Cost}{The annual cost (ie: regeneration costs or property taxes)}
+\item{Cost}{The total cost expanded to a given year cost (ie: regeneration costs or property taxes)}
 
 \item{Discount}{The discount rate (ex: .05)}
 }

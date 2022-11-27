@@ -49,7 +49,7 @@ NegativeValues == FALSE
 }
 \seealso{
 Other Value Functions: 
-\code{\link{NPV}()},
+\code{\link{ComplexNPV}()},
 \code{\link{PresentValue}()}
 }
 \concept{Value Functions}

@@ -1,4 +1,4 @@
-#' Present Value
+#' ComplexNPV
 #'
 #' This function calculates a single asset's value
 #' at a specific time at a single discount rate.
