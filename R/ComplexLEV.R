@@ -1,36 +1,14 @@
-#' Present Value
-#'
-#' This function calculates a single asset's value
-#' at a specific time at a single discount rate.
-#'
-#' Run function at multiple discount rates for sensitivity analysis.
-#'
-#'@param Flow cash flow/asset/expense of interest.
-#'@param Discount Discount rate. Enter percent as .05 or .07, etc. Do not enter vector only single number.
-#'@param Year age at which you want to know flow's value.
-#'
-#'@return Present Value
-#'
-#'@family Value Functions
-#'
-#'@examples
-#'
-#'PresentValue(100000, .06, 30)
-#'PresentValue(100000, .06, 20)
-#'PresentValue(100000, .07, 30)
-#'PresentValue(100000, .07, 20)
-#'
-#'@export
 
 
-ComplexNPV <- function(Flow, Class,
+
+ComplexLEV <- function(Flow, Class,
                        Frequency, FirstOccurance,
                        TimeHorizon, Rate,
                        PeriodLength = NA,
                        Discount){
 
   Occurance <- FirstOccurance
-# Add checks to catch data entry errors -----------------------------------
+  # Add checks to catch data entry errors -----------------------------------
 
   # Flow Variable
   ifelse(is.numeric(Flow) == TRUE,
@@ -57,8 +35,8 @@ ComplexNPV <- function(Flow, Class,
 
   # Make Sure first occurance values are entered
   ifelse(is.numeric(Occurance) == TRUE,
-      print("No Occurance Entries Missed"),
-      stop("Occurance must have a numeric value equal to the year of event."))
+         print("No Occurance Entries Missed"),
+         stop("Occurance must have a numeric value equal to the year of event."))
 
   # Only One time horizon can be run at a time (mapply over list for multiple)
   ifelse(length(TimeHorizon) == 1,
@@ -67,40 +45,40 @@ ComplexNPV <- function(Flow, Class,
          stop("Please enter a single time horizon and not a list or
               vector of values. ex: TimeHorizon = 30"))
 
-   # Make sure rate is formatted correctly
-   ifelse(Rate <= .25,
+  # Make sure rate is formatted correctly
+  ifelse(Rate <= .25,
          print(paste("Rate is set at", Rate, sep = " ")),
          stop("Rate is set above 25%"))
 
-    # Ensure there are no weird values for Period Length
-    PeriodLength <- ifelse(Frequency %in% c("Single", "Annual"),
-                           NA, PeriodLength)
+  # Ensure there are no weird values for Period Length
+  PeriodLength <- ifelse(Frequency %in% c("Single", "Annual"),
+                         NA, PeriodLength)
 
-    # Apply Time Horizon to each flow for functions
-    TimeHorizon <- rep(TimeHorizon, length(Flow))
-    TimeHorizon <- TimeHorizon[1:length(Flow)]
-# Create Dataframe --------------------------------------------------------
-     Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
+  # Apply Time Horizon to each flow for functions
+  TimeHorizon <- rep(TimeHorizon, length(Flow))
+  TimeHorizon <- TimeHorizon[1:length(Flow)]
+  # Create Dataframe --------------------------------------------------------
+  Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
                      PeriodLength)
 
 
-# Create Different Compounding Lengths based on event occurance -----------
+  # Create Different Compounding Lengths based on event occurance -----------
   Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurance)
 
 
-# Filter All Events Into Like Classes ----------------------------------
+  # Filter All Events Into Like Classes ----------------------------------
   Costs <- Data %>% filter(Class %in% c("Negative", "Expense"))
   Revenues <- Data %>% filter(Class %in% c("Positive", "Revenue"))
 
 
-# Process Costs -----------------------------------------------------------
+  # Process Costs -----------------------------------------------------------
   SingleCosts <- Costs %>% filter(Frequency == "Single")
   PeriodicCosts <- Costs %>% filter(Frequency == "Periodic")
   AnnualCosts <- Costs %>% filter(Frequency == "Annual")
 
   # One Time Costs
   TotalSingleCosts <- mapply(SinglePayment, SingleCosts$Flow, SingleCosts$Rate,
-                        SingleCosts$CompoundingLength, Present = FALSE)
+                             SingleCosts$CompoundingLength, Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalSingleCosts <- ifelse(length(TotalSingleCosts) == 0, 0,
                              TotalSingleCosts)
@@ -119,73 +97,73 @@ ComplexNPV <- function(Flow, Class,
 
   #Annual Costs
   TotalAnnualCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
-                         PeriodicCosts$Rate, PeriodicCosts$Frequency,
-                         PeriodLength = PeriodicCosts$PeriodLength,
-                         Termination = PeriodicCosts$CompoundingLength,
-                         Present = FALSE)
+                             PeriodicCosts$Rate, PeriodicCosts$Frequency,
+                             PeriodLength = PeriodicCosts$PeriodLength,
+                             Termination = PeriodicCosts$CompoundingLength,
+                             Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualCosts <- ifelse(length(TotalAnnualCosts) == 0, 0,
                              TotalAnnualCosts)
   TotalAnnualCosts <- sum(TotalAnnualCosts)
 
-# Sum all Costs --------------------------------------------------------
+  # Sum all Costs --------------------------------------------------------
 
   TotalCosts <- TotalSingleCosts + TotalPeriodicCosts + TotalAnnualCosts
 
-# Clean Environment -------------------------------------------------------
+  # Clean Environment -------------------------------------------------------
   rm(SingleCosts, TotalSingleCosts, PeriodicCosts, TotalPeriodicCosts,
      AnnualCosts, TotalAnnualCosts)
 
-# Process Revenues -----------------------------------------------------------
+  # Process Revenues -----------------------------------------------------------
   SingleRevenues <- Revenues %>% filter(Frequency == "Single")
   PeriodicRevenues <- Revenues %>% filter(Frequency == "Periodic")
   AnnualRevenues <- Revenues %>% filter(Frequency == "Annual")
 
 
-# Single Payment Revenues -------------------------------------------------
+  # Single Payment Revenues -------------------------------------------------
   TotalSingleRevenues <- mapply(SinglePayment, SingleRevenues$Flow,
                                 SingleRevenues$Rate,
-                             SingleRevenues$CompoundingLength,
-                             Present = FALSE)
+                                SingleRevenues$CompoundingLength,
+                                Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalSingleRevenues <- ifelse(length(TotalSingleRevenues) == 0, 0,
                                 TotalSingleRevenues)
   TotalSingleRevenues <- sum(TotalSingleRevenues)
 
-# Periodic Revenues -------------------------------------------------------
+  # Periodic Revenues -------------------------------------------------------
 
   TotalPeriodicRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
-                               PeriodicRevenues$Rate,
-                               PeriodicRevenues$Frequency,
-                               PeriodLength = PeriodicRevenues$PeriodLength,
-                               Termination = PeriodicRevenues$CompoundingLength,
-                               Present = FALSE)
+                                  PeriodicRevenues$Rate,
+                                  PeriodicRevenues$Frequency,
+                                  PeriodLength = PeriodicRevenues$PeriodLength,
+                                  Termination = PeriodicRevenues$CompoundingLength,
+                                  Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalPeriodicRevenues <- ifelse(length(TotalPeriodicRevenues) == 0, 0,
                                   TotalPeriodicRevenues)
 
 
-# Annual Revenues ---------------------------------------------------------
+  # Annual Revenues ---------------------------------------------------------
   TotalAnnualRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
-                             PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
-                             PeriodLength = PeriodicRevenues$PeriodLength,
-                             Termination = PeriodicRevenues$CompoundingLength,
-                             Present = FALSE)
+                                PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
+                                PeriodLength = PeriodicRevenues$PeriodLength,
+                                Termination = PeriodicRevenues$CompoundingLength,
+                                Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualRevenues <- ifelse(length(TotalAnnualRevenues) == 0, 0,
                                 TotalAnnualRevenues)
   TotalAnnualRevenues <- sum(TotalAnnualRevenues)
 
 
-# Sum all Revenues --------------------------------------------------------
+  # Sum all Revenues --------------------------------------------------------
   TotalRevenues <- TotalSingleRevenues + TotalPeriodicRevenues + TotalAnnualRevenues
 
 
-# Clean Enviornment -------------------------------------------------------
+  # Clean Enviornment -------------------------------------------------------
   rm(SingleRevenues, TotalSingleRevenues, PeriodicRevenues, TotalPeriodicRevenues,
      AnnualRevenues, TotalAnnualRevenues)
 
-# Prepare for NPV Calculation ---------------------------------------------
+  # Prepare for NPV Calculation ---------------------------------------------
 
   Horizon <- max(Data$TimeHorizon) # Single Horizon Value
 
@@ -193,6 +171,7 @@ ComplexNPV <- function(Flow, Class,
 
   DiscountVal <- max(Discount) # Apply Universal Discount to Total Flow
 
-  NPV <- SimpleNPV(NetFlow, Class = "Revenue", Horizon, DiscountVal)
-  return(sum(NPV))
+  LEV <- LandExpectVal(NetFlow, Horizon, DiscountVal)
+  LEV <- round(LEV,2)
+  return(LEV)
 }

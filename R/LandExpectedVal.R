@@ -1,11 +1,30 @@
-# Land Expected Value Uneven Aged Forest
+#' Land Expected Value (Multiple Rotations)
+#'
+#' Use this function to estimate the simple LEV
+#'
+#'@param Age The age where LEV is of interest
+#'@param FutureValue Total Future Value (Use SinglePayment and SeriesPayment Functions)
+#'@param Discount The discount rate (ex: .05)
+#'
+#'@return Land Expected Value for a single year when the stand has multiple rotations.
+#'
+#'@family Rotation Age
+#'
+#'@examples
+#'
+#' Age <- 40
+#' FutureValue <- 1960
+#' Discount <- .06
+#'
+#' LandExpectVal(Age, FutureValue, Discount)
+#'@export
 
-LandExVal <- SingleRotationAge <- function(Age, Stumpage, Volume, Cost, Discount){
+LandExpectVal <- function(FutureValue, Age, Discount){
 
-  Cost <- ifelse(Cost < 0, Cost*-1, Cost)
-
-  val <- ((Volume*Stumpage) - Cost*((1+Discount)^Age))/(((1+Discount)^Age) - 1)
+  val <- FutureValue/((1+Discount)^Age - 1)
   return(val)
 
-
 }
+
+
+
