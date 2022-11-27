@@ -1,0 +1,701 @@
+---
+title: "Version Control and Decision Making in Forest Economic"
+author: Ryan Smith
+output: pdf_document
+date: "2022-11-26"
+theme:
+      color-contrast-warnings: false
+      bg: "#202123"
+      fg: "#B8BCC2"
+      primary: "#EA80FC"
+      secondary: "#00DAC6"
+      base_font:
+        google: Prompt
+      heading_font:
+        google: Proza Libre
+---
+
+## Version Control and Decision Making in Forest Economics
+
+A common organizational problem in forest management is ineffective version control and data analysis tools that create opportunities for simple errors and inconsistent calculations. These problems often stem from a reliance on spreadsheets that get passed on from one person to the next. It is not uncommon to find one person working on a document called T7R10_V2.xlsx while another is working on a similar document called T7R10_V3.xlsx. With these documents, they may have accidentally entered different discount rates while trying to talk about the same scenarios. A way to prevent this problem is through functional programming.
+
+A solution to this problem is to build an R package to analyze single actions and management scenarios. By relying on standard functions with required input formatting, spreadsheets with equations that may be accidentally altered are no longer a problem.
+
+The R package I built is called forestvalues. This package allows for individual actions to be analyzed along with complex scenarios, including one-time costs or revenues, recurring periodic costs or revenues, and annual costs or revenues. This package allows the same form to be input with different settings for comparing potential outcomes given different management decisions or timescales.
+
+While I recognize this is not a traditional paper, this project provides tools to quickly assign values to yield curves for optimization in linear programming or simple comparison of management decisions. An example would be deciding whether a carbon project with revenues from carbon credits but a delayed harvest rotation and decreased allowable cut is a wise economic decision compared to a business-as-usual scenario.
+
+The final package can be viewed at **github.com/ryanmismith/forestvalues** - each function will contain the required documentation and examples to be used by parties other than myself. Below I will outline the essential functions that will allow me to build a script for processing a static form and then display the results of a comparison between a carbon project and business-as-usual scenario using the written package.
+
+## Essential Functions
+
+The first step to building this package is to build essential functions that can be called internally by larger functions. The initial functions include functions for series payments and single payment events. These functions need to be able to both provide present value or future values to provide the user flexibility.
+
+### Present Value
+
+```{r}
+
+PresentValue <- function(Asset, Discount, Year){
+  PV <- Asset/(1+Discount)^Year
+  return(PV)
+}
+```
+
+##### Example of a harvest with a revenue of 250000 in 30 years with a discount rate of 6%
+
+```{r}
+PresentValue(250000, .06, 30)
+```
+
+### Single Payments
+
+```{r}
+
+SinglePayment <- function(Flow, Rate, Time, Present = TRUE){
+      # Simple Discounting
+      discount <- function(Flow, Rate, Time){
+           Val <- Flow/((1+Rate)^Time)
+           return(Val)
+       }
+      # Simple Compounding
+      compounding <- function(Flow, Rate, Time){
+        Flow*((1+Rate)^Time)
+      }
+
+      Val <- ifelse(Present == TRUE,
+             discount(Flow, Rate, Time),
+             compounding(Flow, Rate, Time))
+
+      Val <- round(Val, 2)
+      return(Val)
+}
+
+```
+
+##### The present value of a single payment made 10 years in the future with a 6% discount rate
+
+```{r}
+SinglePayment(5000, .06, 10, Present = TRUE)
+```
+
+##### The compounding value of the same single payment after 10 years with a 6% interest rate
+
+```{r}
+SinglePayment(5000, .06, 10, Present = FALSE)
+```
+
+\newpage
+
+### Series Payments
+
+```{r}
+SeriesPayment <- function(Flow,
+                          Rate = .06,
+                          Frequency = "Annual",
+                          PeriodLength = NA,
+                          Termination = NA,
+                          Present = TRUE){
+
+  data <- data.frame(Flow, Rate, Frequency, Termination, Present, PeriodLength)
+
+  for(i in length(data$Flow)){
+    # Annual Payments
+    if(data$Frequency[i] == "Annual"){ 
+      # Terminating Annual Payments
+      if(is.na(data$Termination[i]) == TRUE){
+        data$val[i] <- data$Flow[i]/data$Rate[i]
+       } else {
+         # Compounding Value
+        if(data$Present[i] == FALSE){
+          data$val[i] <- (data$Flow[i]*((((1+data$Rate[i])^data$Termination[i]))-1))/
+            data$Rate[i]
+        } else {
+          #Present Value
+          data$val[i] <- (data$Flow[i]*((((1+data$Rate[i])^data$Termination[i]))-1))/
+            (data$Rate[i]*((1+data$Rate[i])^data$Termination[i]))
+        }
+      }
+    } else {
+   # Periodic Payments
+   if(data$Frequency[i] == "Periodic"){
+     # Terminating
+     if(is.na(data$Termination[i]) == TRUE){
+       data$val[i] <- data$Flow[i]/((1+data$Rate[i])^data$PeriodLength[i]-1)
+     } else {
+       # Compounding
+       if(data$Present[i] == FALSE){
+         data$val[i] <- (data$Flow[i]*((1+data$Rate[i])^data$Termination[i]-1))/
+           ((1+data$Rate[i])^data$PeriodLength[i]-1)
+         # Present Value
+       } else {
+         data$val[i] <- (data$Flow[i]*((1+data$Rate[i])^data$Termination[i]-1))/
+           (((1+data$Rate[i])^data$PeriodLength[i]-1)*
+              ((1+data$Rate[i])^data$Termination[i]))
+       }
+      }
+     }
+    }
+  }
+  return(round(data$val,2))
+}
+```
+
+##### The future value of a payment made every 5 years for 30 years with a 6% interest rate.
+
+```{r}
+SeriesPayment(1000, .06, "Periodic", PeriodLength = 5, Termination = 30, Present = FALSE)
+```
+
+##### The present value of a payment made every 5 years for 30 years with a 6% discount rate.
+
+```{r}
+SeriesPayment(1000, .06, "Periodic", PeriodLength = 5, Termination = 30, Present = TRUE)
+```
+
+##### The future value of an annual payment made for 30 years with a 6% interest rate.
+
+```{r}
+SeriesPayment(1000, .06, "Annual", Termination = 30, Present = FALSE)
+```
+
+##### The present value of an annual payment made in perpetuity with a 6% discount rate.
+
+```{r}
+SeriesPayment(1000, .06, "Annual", Present = TRUE)
+```
+
+\newpage
+
+### Net Present Value and Land Expected Value
+
+The following functions show the summary net present value and the land expectation value when all revenues and costs are included at time n. The net present value function allows for a matrix of pre-calculated revenues and expenses to be entered.
+
+```{r}
+
+LandExpectVal <- function(FutureValue, Age, Discount){
+
+  val <- FutureValue/((1+Discount)^Age - 1)
+  return(val)
+
+}
+```
+
+##### Land expected value with a total revenue-cost of \$52,000 in 40 years with a 6% discount rate.
+
+```{r}
+LandExpectVal(52000, 40, .06)
+```
+
+```{r}
+SimpleNPV <- function(Flow, Class, Occurance, Discount, NegativeValues = TRUE){
+
+
+# If flow values are not indicated as positive or negative ----------------
+# Change to correct flow (negative or positive) ---------------------------
+# Allow inputs of Expense/Revenue or Positive/Negative --------------------
+
+  if(NegativeValues == TRUE){
+    Flow <- Flow
+  } else {
+    Flow <- ifelse(startsWith(Class, "E") == TRUE | 
+                     startsWith(Class, "e") == TRUE, Flow*-1, Flow)
+  }
+
+  if(NegativeValues == TRUE){
+    Flow <- Flow
+  } else {
+    Flow <- ifelse(startsWith(Class, "N") == TRUE | 
+                     startsWith(Class, "n") == TRUE, Flow*-1, Flow)
+  }
+
+
+# Create vector for discount of length Flows ------------------------------
+
+  Discount <- rep(Discount, length(Flow))
+
+
+# Create DF for mapply ----------------------------------------------------
+
+
+  ValueTable <- data.frame(Flow, Class, Occurance, Discount)
+
+
+# Internal Function Call --------------------------------------------------
+
+  ValueTable$PV <- mapply(PresentValue, ValueTable$Flow,
+                          ValueTable$Discount, ValueTable$Occurance)
+
+# Calculate, round, and return total NPV ----------------------------------
+  NPV <- sum(ValueTable$PV)
+
+  NPV <- round(NPV, 2)
+  return(NPV)
+
+}
+```
+
+##### Net present value with a total revenue-cost of \$52,000 in 40 years with a 6% discount rate.
+
+```{r}
+SimpleNPV(52000, "Revenue", 40, .06)
+```
+
+\newpage
+
+### Function For Calculating NPV or LEV Given a Series of Revenues and Costs
+
+It is a pain to go through and manually run a function on each individual element in a given management scenario. Sometimes, a scenario may be so complex that this isn't feasible. For this reason, we can take the building blocks shown above to build a larger function capable of handling an actual input of complex revenues and costs across a long temporal scale.
+
+### NPV Function - (LEV Function Identical Except Final Call is LEV from above)
+
+```{r}
+ComplexNPV <- function(Flow, Class,
+                       Frequency, FirstOccurance,
+                       TimeHorizon, Rate,
+                       PeriodLength = NA,
+                       Discount){
+
+  Occurance <- FirstOccurance
+# Add checks to catch data entry errors -----------------------------------
+
+  # Flow Variable
+  ifelse(is.numeric(Flow) == TRUE,
+         print("No Flow Entries Missed"),
+         stop("All Cash Flows and Assets must have a numeric value."))
+
+  # Make Sure Flow Variables are not Negative (Costs subtracted later)
+  ifelse(Flow > 0,
+         print("All Flows Properly Formatted"),
+         stop("Please enter all flows as positive values,
+         costs will be deducted when labeled as class 'Negative' or 'Cost'"))
+
+  # Class Variables Valid for Filtering Later
+  ifelse(Class %in% c("Revenue", "Expense", "Positive", "Negative"),
+         print("Class Okay"),
+         stop("Classes must be either
+              'Revenue/Expense' or 'Positive/Negative'"))
+
+  # Frequencies Valid For Filtering Later / SeriesPayment Functions
+  ifelse(Frequency %in% c("Single", "Periodic", "Annual"),
+         print("Frequency Okay"),
+         stop("Unknown Types or Errors in Frequency Input.
+               Must be 'Single', 'Periodic', or 'Annual'"))
+
+  # Make Sure first occurance values are entered
+  ifelse(is.numeric(Occurance) == TRUE,
+      print("No Occurance Entries Missed"),
+      stop("Occurance must have a numeric value equal to the year of event."))
+
+  # Only One time horizon can be run at a time (mapply over list for multiple)
+  ifelse(length(TimeHorizon) == 1,
+         print(paste("Single Time Horizon set at length",
+                     TimeHorizon, sep = " ")),
+         stop("Please enter a single time horizon and not a list or
+              vector of values. ex: TimeHorizon = 30"))
+
+   # Make sure rate is formatted correctly
+   ifelse(Rate <= .25,
+         print(paste("Rate is set at", Rate, sep = " ")),
+         stop("Rate is set above 25%"))
+
+    # Ensure there are no weird values for Period Length
+    PeriodLength <- ifelse(Frequency %in% c("Single", "Annual"),
+                           NA, PeriodLength)
+
+    # Apply Time Horizon to each flow for functions
+    TimeHorizon <- rep(TimeHorizon, length(Flow))
+    TimeHorizon <- TimeHorizon[1:length(Flow)]
+# Create Dataframe --------------------------------------------------------
+     Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
+                     PeriodLength)
+
+
+# Create Different Compounding Lengths based on event occurance -----------
+  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurance)
+
+
+# Filter All Events Into Like Classes ----------------------------------
+  Costs <- Data %>% filter(Class %in% c("Negative", "Expense"))
+  Revenues <- Data %>% filter(Class %in% c("Positive", "Revenue"))
+
+
+# Process Costs -----------------------------------------------------------
+  SingleCosts <- Costs %>% filter(Frequency == "Single")
+  PeriodicCosts <- Costs %>% filter(Frequency == "Periodic")
+  AnnualCosts <- Costs %>% filter(Frequency == "Annual")
+
+  # One Time Costs
+  TotalSingleCosts <- mapply(SinglePayment, SingleCosts$Flow, SingleCosts$Rate,
+                        SingleCosts$CompoundingLength, Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalSingleCosts <- ifelse(length(TotalSingleCosts) == 0, 0,
+                             TotalSingleCosts)
+  TotalSingleCosts <- sum(TotalSingleCosts)
+
+  # Periodic Costs
+  TotalPeriodicCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
+                               PeriodicCosts$Rate, PeriodicCosts$Frequency,
+                               PeriodLength = PeriodicCosts$PeriodLength,
+                               Termination = PeriodicCosts$CompoundingLength,
+                               Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalPeriodicCosts <- ifelse(length(TotalPeriodicCosts) == 0, 0,
+                               TotalPeriodicCosts)
+  TotalPeriodicCosts <- sum(TotalPeriodicCosts)
+
+  #Annual Costs
+  TotalAnnualCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
+                         PeriodicCosts$Rate, PeriodicCosts$Frequency,
+                         PeriodLength = PeriodicCosts$PeriodLength,
+                         Termination = PeriodicCosts$CompoundingLength,
+                         Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalAnnualCosts <- ifelse(length(TotalAnnualCosts) == 0, 0,
+                             TotalAnnualCosts)
+  TotalAnnualCosts <- sum(TotalAnnualCosts)
+
+# Sum all Costs --------------------------------------------------------
+
+  TotalCosts <- TotalSingleCosts + TotalPeriodicCosts + TotalAnnualCosts
+
+# Clean Environment -------------------------------------------------------
+  rm(SingleCosts, TotalSingleCosts, PeriodicCosts, TotalPeriodicCosts,
+     AnnualCosts, TotalAnnualCosts)
+
+# Process Revenues -----------------------------------------------------------
+  SingleRevenues <- Revenues %>% filter(Frequency == "Single")
+  PeriodicRevenues <- Revenues %>% filter(Frequency == "Periodic")
+  AnnualRevenues <- Revenues %>% filter(Frequency == "Annual")
+
+
+# Single Payment Revenues -------------------------------------------------
+  TotalSingleRevenues <- mapply(SinglePayment, SingleRevenues$Flow,
+                                SingleRevenues$Rate,
+                             SingleRevenues$CompoundingLength,
+                             Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalSingleRevenues <- ifelse(length(TotalSingleRevenues) == 0, 0,
+                                TotalSingleRevenues)
+  TotalSingleRevenues <- sum(TotalSingleRevenues)
+
+# Periodic Revenues -------------------------------------------------------
+
+  TotalPeriodicRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
+                               PeriodicRevenues$Rate,
+                               PeriodicRevenues$Frequency,
+                               PeriodLength = PeriodicRevenues$PeriodLength,
+                               Termination = PeriodicRevenues$CompoundingLength,
+                               Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalPeriodicRevenues <- ifelse(length(TotalPeriodicRevenues) == 0, 0,
+                                  TotalPeriodicRevenues)
+
+
+# Annual Revenues ---------------------------------------------------------
+  TotalAnnualRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
+                             PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
+                             PeriodLength = PeriodicRevenues$PeriodLength,
+                             Termination = PeriodicRevenues$CompoundingLength,
+                             Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalAnnualRevenues <- ifelse(length(TotalAnnualRevenues) == 0, 0,
+                                TotalAnnualRevenues)
+  TotalAnnualRevenues <- sum(TotalAnnualRevenues)
+
+
+# Sum all Revenues --------------------------------------------------------
+  TotalRevenues <- TotalSingleRevenues + TotalPeriodicRevenues + TotalAnnualRevenues
+
+
+# Clean Enviornment -------------------------------------------------------
+  rm(SingleRevenues, TotalSingleRevenues, PeriodicRevenues, TotalPeriodicRevenues,
+     AnnualRevenues, TotalAnnualRevenues)
+
+# Prepare for NPV Calculation ---------------------------------------------
+
+  Horizon <- max(Data$TimeHorizon) # Single Horizon Value
+
+  NetFlow <- TotalRevenues-TotalCosts # Single Flow Value
+
+  DiscountVal <- max(Discount) # Apply Universal Discount to Total Flow
+
+  NPV <- SimpleNPV(NetFlow, Class = "Revenue", Horizon, DiscountVal)
+  return(NPV)
+}
+```
+
+```{r echo=FALSE}
+ComplexLEV <- function(Flow, Class,
+                       Frequency, FirstOccurance,
+                       TimeHorizon, Rate,
+                       PeriodLength = NA,
+                       Discount){
+
+  Occurance <- FirstOccurance
+# Add checks to catch data entry errors -----------------------------------
+
+  # Flow Variable
+  ifelse(is.numeric(Flow) == TRUE,
+         print("No Flow Entries Missed"),
+         stop("All Cash Flows and Assets must have a numeric value."))
+
+  # Make Sure Flow Variables are not Negative (Costs subtracted later)
+  ifelse(Flow > 0,
+         print("All Flows Properly Formatted"),
+         stop("Please enter all flows as positive values,
+         costs will be deducted when labeled as class 'Negative' or 'Cost'"))
+
+  # Class Variables Valid for Filtering Later
+  ifelse(Class %in% c("Revenue", "Expense", "Positive", "Negative"),
+         print("Class Okay"),
+         stop("Classes must be either
+              'Revenue/Expense' or 'Positive/Negative'"))
+
+  # Frequencies Valid For Filtering Later / SeriesPayment Functions
+  ifelse(Frequency %in% c("Single", "Periodic", "Annual"),
+         print("Frequency Okay"),
+         stop("Unknown Types or Errors in Frequency Input.
+               Must be 'Single', 'Periodic', or 'Annual'"))
+
+  # Make Sure first occurance values are entered
+  ifelse(is.numeric(Occurance) == TRUE,
+      print("No Occurance Entries Missed"),
+      stop("Occurance must have a numeric value equal to the year of event."))
+
+  # Only One time horizon can be run at a time (mapply over list for multiple)
+  ifelse(length(TimeHorizon) == 1,
+         print(paste("Single Time Horizon set at length",
+                     TimeHorizon, sep = " ")),
+         stop("Please enter a single time horizon and not a list or
+              vector of values. ex: TimeHorizon = 30"))
+
+   # Make sure rate is formatted correctly
+   ifelse(Rate <= .25,
+         print(paste("Rate is set at", Rate, sep = " ")),
+         stop("Rate is set above 25%"))
+
+    # Ensure there are no weird values for Period Length
+    PeriodLength <- ifelse(Frequency %in% c("Single", "Annual"),
+                           NA, PeriodLength)
+
+    # Apply Time Horizon to each flow for functions
+    TimeHorizon <- rep(TimeHorizon, length(Flow))
+    TimeHorizon <- TimeHorizon[1:length(Flow)]
+# Create Dataframe --------------------------------------------------------
+     Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
+                     PeriodLength)
+
+
+# Create Different Compounding Lengths based on event occurance -----------
+  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurance)
+
+
+# Filter All Events Into Like Classes ----------------------------------
+  Costs <- Data %>% filter(Class %in% c("Negative", "Expense"))
+  Revenues <- Data %>% filter(Class %in% c("Positive", "Revenue"))
+
+
+# Process Costs -----------------------------------------------------------
+  SingleCosts <- Costs %>% filter(Frequency == "Single")
+  PeriodicCosts <- Costs %>% filter(Frequency == "Periodic")
+  AnnualCosts <- Costs %>% filter(Frequency == "Annual")
+
+  # One Time Costs
+  TotalSingleCosts <- mapply(SinglePayment, SingleCosts$Flow, SingleCosts$Rate,
+                        SingleCosts$CompoundingLength, Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalSingleCosts <- ifelse(length(TotalSingleCosts) == 0, 0,
+                             TotalSingleCosts)
+  TotalSingleCosts <- sum(TotalSingleCosts)
+
+  # Periodic Costs
+  TotalPeriodicCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
+                               PeriodicCosts$Rate, PeriodicCosts$Frequency,
+                               PeriodLength = PeriodicCosts$PeriodLength,
+                               Termination = PeriodicCosts$CompoundingLength,
+                               Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalPeriodicCosts <- ifelse(length(TotalPeriodicCosts) == 0, 0,
+                               TotalPeriodicCosts)
+  TotalPeriodicCosts <- sum(TotalPeriodicCosts)
+
+  #Annual Costs
+  TotalAnnualCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
+                         PeriodicCosts$Rate, PeriodicCosts$Frequency,
+                         PeriodLength = PeriodicCosts$PeriodLength,
+                         Termination = PeriodicCosts$CompoundingLength,
+                         Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalAnnualCosts <- ifelse(length(TotalAnnualCosts) == 0, 0,
+                             TotalAnnualCosts)
+  TotalAnnualCosts <- sum(TotalAnnualCosts)
+
+# Sum all Costs --------------------------------------------------------
+
+  TotalCosts <- TotalSingleCosts + TotalPeriodicCosts + TotalAnnualCosts
+
+# Clean Environment -------------------------------------------------------
+  rm(SingleCosts, TotalSingleCosts, PeriodicCosts, TotalPeriodicCosts,
+     AnnualCosts, TotalAnnualCosts)
+
+# Process Revenues -----------------------------------------------------------
+  SingleRevenues <- Revenues %>% filter(Frequency == "Single")
+  PeriodicRevenues <- Revenues %>% filter(Frequency == "Periodic")
+  AnnualRevenues <- Revenues %>% filter(Frequency == "Annual")
+
+
+# Single Payment Revenues -------------------------------------------------
+  TotalSingleRevenues <- mapply(SinglePayment, SingleRevenues$Flow,
+                                SingleRevenues$Rate,
+                             SingleRevenues$CompoundingLength,
+                             Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalSingleRevenues <- ifelse(length(TotalSingleRevenues) == 0, 0,
+                                TotalSingleRevenues)
+  TotalSingleRevenues <- sum(TotalSingleRevenues)
+
+# Periodic Revenues -------------------------------------------------------
+
+  TotalPeriodicRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
+                               PeriodicRevenues$Rate,
+                               PeriodicRevenues$Frequency,
+                               PeriodLength = PeriodicRevenues$PeriodLength,
+                               Termination = PeriodicRevenues$CompoundingLength,
+                               Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalPeriodicRevenues <- ifelse(length(TotalPeriodicRevenues) == 0, 0,
+                                  TotalPeriodicRevenues)
+
+
+# Annual Revenues ---------------------------------------------------------
+  TotalAnnualRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
+                             PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
+                             PeriodLength = PeriodicRevenues$PeriodLength,
+                             Termination = PeriodicRevenues$CompoundingLength,
+                             Present = FALSE)
+  # Sum and Allow mathematical operations when length(list) = 0
+  TotalAnnualRevenues <- ifelse(length(TotalAnnualRevenues) == 0, 0,
+                                TotalAnnualRevenues)
+  TotalAnnualRevenues <- sum(TotalAnnualRevenues)
+
+
+# Sum all Revenues --------------------------------------------------------
+  TotalRevenues <- TotalSingleRevenues + TotalPeriodicRevenues + TotalAnnualRevenues
+
+
+# Clean Enviornment -------------------------------------------------------
+  rm(SingleRevenues, TotalSingleRevenues, PeriodicRevenues, TotalPeriodicRevenues,
+     AnnualRevenues, TotalAnnualRevenues)
+
+# Prepare for NPV Calculation ---------------------------------------------
+
+  Horizon <- max(Data$TimeHorizon) # Single Horizon Value
+
+  NetFlow <- TotalRevenues-TotalCosts # Single Flow Value
+
+  DiscountVal <- max(Discount) # Apply Universal Discount to Total Flow
+  
+  LEV <- LandExpectVal(NetFlow, Horizon, DiscountVal)
+  LEV <- round(LEV,2)
+  return(LEV)
+}
+
+```
+
+\newpage
+
+### Scenarios
+
+Now that we have our function written we can simply use the same form for every future scenario and know that we are going to be using the same equations to solve the problem. The function also checks the form entries and syntax to try and prevent simple errors when possible. The function allows great flexibility in the types of payments and revenues that can be entered, as well as flexibility to use different interest or discount rates for individual items if we know they will appreciate or depreciate at a rate that is different than the default discount rate we are using for our total NPV and LEV calculations at the end of our function.
+
+##### We can now test two different scenarios through the function and see which provides the highest NPV and LEV.
+
+#### Scenario 1 - Carbon Credits
+
+In this scenario we receive a bulk payment for carbon credits, but this requires both a longer rotation and a lighter cut. In addition to this, we need to do an initial carbon inventory and then periodic validation inventories for the life of the credits. The simple form is shown in the table below.
+
+##### Carbon Credit Flows
+
+| Action                | Cash Flow | Class   | Frequency | Occurrence | Rate | Period Length |
+|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
+| Planting              | 750       | Expense | Single    | 0          | 0.06 |               |
+| Carbon Credits        | 4000      | Revenue | Single    | 0          | 0.06 |               |
+| Inventory             | 500       | Expense | Single    | 0          | 0.06 |               |
+| Property Tax          | 50        | Expense | Annual    | 0          | 0.06 |               |
+| Validation Inventory  | 500       | Expense | Periodic  | 10         | 0.06 | 10            |
+| PCT                   | 750       | Expense | Single    | 15         | .06  |               |
+| Long Rotation Harvest | 2000      | Revenue | Single    | 40         | .06  |               |
+
+```{r echo = FALSE}
+Scenario1 <- read.csv("~/Thesis/R Script/My Scripts/For Adam/Scenario1.csv")
+Scenario2 <- read.csv("~/Thesis/R Script/My Scripts/For Adam/Scenario2.csv")
+
+```
+
+After reading in simple csv forms formatted like these tables you just run the functions with the columns as arguments, being sure to set a total time horizon and a discount rate for the NPV and LEV.
+
+#### NPV
+
+```{r echo = TRUE}
+library(dplyr)
+ComplexNPV(Flow = Scenario1$Flow, Class = Scenario1$Class, Frequency = Scenario1$Frequency, FirstOccurance = Scenario1$Occurance, TimeHorizon = 40, Rate = Scenario1$Rate, PeriodLength = Scenario1$PeriodLength, Discount = .06)
+
+```
+
+##### Net Present Value = \$2108 for Scenario 1
+
+#### LEV
+
+```{r echo = TRUE}
+library(dplyr)
+ComplexLEV(Flow = Scenario1$Flow, Class = Scenario1$Class, Frequency = Scenario1$Frequency, FirstOccurance = Scenario1$Occurance, TimeHorizon = 40, Rate = Scenario1$Rate, PeriodLength = Scenario1$PeriodLength, Discount = .06)
+
+```
+
+##### Land Expectation Value For Scenario 1 = \$2335
+
+#### Scenario 2 - Business As Usual
+
+In this scenario we receive all of our revenue from harvesting and are able to cut both more frequently and cut more heavily. In this scenario we invest in additional timber stand improvement in the goal of increasing the quality and value of the wood.
+
+##### Business As Usual Flow
+
+| Action              | Cash Flow | Class   | Frequency | Occurrence | Rate | Period Length |
+|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
+| Planting            | 750       | Expense | Single    | 0          | 0.06 |               |
+| Property Tax        | 50        | Expense | Annual    | 0          | 0.06 |               |
+| Spraying            | 275       | Expense | Single    | 5          | 0.06 |               |
+| PCT                 | 800       | Expense | Single    | 12         | 0.06 |               |
+| Commercial Thinning | 2500      | Revenue | Single    | 20         | 0.06 |               |
+| Harvest             | 2500      | Revenue | Single    | 30         | .06  |               |
+| Final Harvest       | 2500      | Revenue | Single    | 40         | .06  |               |
+
+```{r echo = TRUE}
+library(dplyr)
+ComplexNPV(Flow = Scenario2$Flow, Class = Scenario2$Class, Frequency = Scenario2$Frequency, FirstOccurance = Scenario2$Occurance, TimeHorizon = 40, Rate = Scenario2$Rate, PeriodLength = Scenario2$PeriodLength, Discount = .06)
+
+```
+
+##### Net Present Value = \$30 for Scenario 2
+
+#### LEV
+
+```{r echo = TRUE}
+library(dplyr)
+ComplexLEV(Flow = Scenario2$Flow, Class = Scenario2$Class, Frequency = Scenario2$Frequency, FirstOccurance = Scenario2$Occurance, TimeHorizon = 40, Rate = Scenario2$Rate, PeriodLength = Scenario2$PeriodLength, Discount = .06)
+
+```
+
+##### Land Expectation Value For Scenario 2 = \$33
+
+\newpage
+
+### Summary
+
+Clearly, I am not very good at coming up with comparable scenarios, but we can see from the examples that carbon is the clear winner.
+
+This may have seemed like a lot of typing and excessive work for what can be done in a simple excel spreadsheet, but the implications are important. Ideally, all workflows should be simple and reproducible, even if this means putting in more time on the front end. By building this package there are now not only a number of canned functions that will always compute things the same way for all individuals, but these functions can be incorporated into canned reports. The code and warning messages can be taken away, and the values can be reported in a professional manner repeatedly with little effort. All one needs to do is import the new scenario and all the work is done for you.
+
+The other use for a package of this nature is the ability to build interactive web applications using the Shiny platform in R. Using this platform you can make a simple application that prints out the canned form, allows a user to upload it, and then it kicks out the canned report without the user ever interfacing with R or any other environment that may seem unfamiliar.
+
+I know this is an unconventional final report, but you had indicated that we can work on something that is part of a project or existing workflow. I have taken this opportunity to flesh out this package for use in the future. While it is still a bit bare bones now, it provides a framework for more complex analysis in the future.
