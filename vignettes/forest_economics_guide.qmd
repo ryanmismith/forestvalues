@@ -902,6 +902,194 @@ legend("topright", c("Carbon", "BAU"), col = c("darkgreen", "sienna"), lwd = 2)
 
 ---
 
+# Multi-Product Yield Tables {#sec-yield-tables}
+
+Real forest stands produce multiple products simultaneously. Sawlog volume increases
+with age as trees reach merchantable diameters, pulpwood comes from tops and smaller
+stems, and veneer-quality logs only appear at advanced ages. Each product has a
+different stumpage price. The `yield_table()` function captures this reality.
+
+## Creating a Yield Table
+
+Supply ages, a named list of products (each with volume and price columns), and
+optional units:
+
+```{r}
+ages <- seq(10, 80, by = 10)
+
+yt <- yield_table(
+  ages = ages,
+  products = list(
+    sawlog = data.frame(
+      volume = c(0, 0, 2, 5, 10, 16, 20, 22),
+      price = 254   # $/MBF
+    ),
+    pulp = data.frame(
+      volume = c(5, 12, 18, 22, 24, 25, 25, 24),
+      price = 9     # $/ton
+    )
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+yt
+```
+
+The object stores spline-interpolated volume and value functions for each product,
+allowing continuous optimization over age.
+
+## Visualizing Yield Tables
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+plot(yt, type = "volume")
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+plot(yt, type = "value")
+```
+
+## Optimal Rotation with Multiple Products
+
+`optimal_rotation_mp()` extends the Faustmann model to multi-product stands.
+At any candidate rotation age $T$, total revenue is:
+
+$$R(T) = \sum_{i=1}^{n} V_i(T) \cdot P_i$$
+
+where $V_i(T)$ is the volume of product $i$ at age $T$ and $P_i$ is its price.
+The LEV is then:
+
+$$LEV = \frac{R(T)/(1+r)^T - C_0 - PV(\text{annual costs})}{1 - 1/(1+r)^T} \cdot \frac{1}{(1+r)^T}$$
+
+```{r}
+opt <- optimal_rotation_mp(yt, regen_cost = 750, annual_cost = 50,
+                            discount_rate = 0.06)
+cat("Optimal rotation:", round(opt$optimal_age, 1), "years\n")
+cat("LEV at optimum: $", round(opt$value_at_optimum, 2), "\n")
+cat("\nProduct breakdown at optimal age:\n")
+print(opt$product_detail)
+```
+
+## Comparing Rotation Ages
+
+`rotation_comparison_mp()` tabulates NPV, LEV, and per-product volumes/values
+across a range of ages:
+
+```{r}
+comp <- rotation_comparison_mp(yt, regen_cost = 750, annual_cost = 50,
+                                discount_rate = 0.06, ages = seq(20, 70, by = 5))
+head(comp[, c("age", "total_revenue", "npv", "lev")], 10)
+```
+
+### Best Practices
+
+- Use at least 5-6 age observations per product for reliable spline interpolation
+- Verify that spline-interpolated volumes don't go negative at extreme ages
+  (the function clamps negatives to zero)
+- Include age 0 data only if meaningful; splines extrapolate poorly beyond input range
+- When products shift in dominance across ages (e.g., pulp-dominant young stands
+  transitioning to sawlog-dominant mature stands), the multi-product model correctly
+  captures the crossover
+
+### Limitations
+
+- Prices are treated as known constants (no stochastic prices within yield tables);
+  combine with `monte_carlo()` and `stochastic_prices()` for uncertainty analysis
+- Assumes clear-cut harvest at rotation age; partial harvests or thinning revenues
+  must be modeled via `cash_flow_schedule()`
+
+### References
+
+- Bettinger, P., Boston, K., Siry, J.P., & Grebner, D.L. (2017). *Forest Management
+  and Planning*. 2nd ed. Academic Press. Ch. 3, 8.
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 12.
+- Chang, S.J. (1998). "A generalized Faustmann model for the determination of optimal
+  harvest age." *Canadian Journal of Forest Research* 28(5): 652-659.
+
+---
+
+# Excel Export {#sec-excel}
+
+The `export_excel()` function creates formatted Excel workbooks designed for
+practitioners who are comfortable with spreadsheets. Workbooks contain **live
+Excel formulas** — change a parameter cell and results update automatically.
+
+## Key Features
+
+- **Parameter cells** (highlighted yellow) are unlocked for editing: discount rate,
+  regeneration cost, annual cost, product prices
+- **Result cells** (formulas, computed values) are locked to prevent accidental changes
+- **Live formulas** reference the Parameters sheet, so changing one value cascades
+  through all calculations
+- **Worksheet protection** is enabled (no password) so locked cells can't be
+  accidentally overwritten
+
+## Basic Usage
+
+```{r}
+#| eval: false
+# With a yield table
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             annual_cost = 50, time_horizon = 80,
+             file = "stand_analysis.xlsx",
+             title = "Northern Hardwood Analysis",
+             author = "J. Forester")
+```
+
+This produces a workbook with:
+
+1. **Parameters** — editable discount rate, costs, prices
+2. **Yield Table** — volumes by age and product (editable)
+3. **Rotation Analysis** — NPV and LEV at each age (formula-computed)
+4. **Summary** — optimal rotation, max LEV, product breakdown
+
+## With a Management Schedule
+
+```{r}
+#| eval: false
+activities <- data.frame(
+  name = c("Planting", "Annual Tax", "Thinning", "Final Harvest"),
+  amount = c(-750, -50, 1200, 8500),
+  year = c(0, 0, 25, 45),
+  frequency = c("once", "annual", "once", "once"),
+  period_length = c(NA, NA, NA, NA)
+)
+
+export_excel(schedule = activities, discount_rate = 0.06,
+             time_horizon = 45, file = "harvest_plan.xlsx")
+```
+
+## Combined Analysis
+
+Supply both a yield table and a schedule for the most complete workbook:
+
+```{r}
+#| eval: false
+export_excel(yt, schedule = activities, discount_rate = 0.06,
+             regen_cost = 750, annual_cost = 50, time_horizon = 80,
+             file = "full_analysis.xlsx")
+```
+
+### Best Practices
+
+- Use descriptive `title` and `author` fields — they appear in the workbook header
+- Share the workbook alongside your report so colleagues can test "what-if" scenarios
+  by editing the yellow parameter cells
+- If adding custom rows or columns, avoid overwriting formula cells (they are locked
+  when protection is enabled)
+
+### Limitations
+
+- Product breakdown at the optimal rotation is static (R-computed), not formula-based,
+  because optimal rotation requires numerical optimization that Excel formulas cannot
+  replicate
+- Requires the `openxlsx` package (`install.packages("openxlsx")`)
+- Very large yield tables (hundreds of ages) may produce large files
+
+---
+
 # Function Reference {#sec-reference}
 
 | Function | Purpose | Section |
@@ -932,6 +1120,10 @@ legend("topright", c("Carbon", "BAU"), col = c("darkgreen", "sienna"), lwd = 2)
 | `sensitivity_2way()` | Two-way sensitivity | @sec-sensitivity |
 | `tornado_plot()` | Tornado diagram | @sec-sensitivity |
 | `breakeven_analysis()` | Find breakeven values | @sec-sensitivity |
+| `yield_table()` | Multi-product yield table | @sec-yield-tables |
+| `optimal_rotation_mp()` | Multi-product optimal rotation | @sec-yield-tables |
+| `rotation_comparison_mp()` | Multi-product rotation comparison | @sec-yield-tables |
+| `export_excel()` | Formatted Excel workbook | @sec-excel |
 
 ---
 
