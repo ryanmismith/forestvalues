@@ -67,7 +67,9 @@ S3method(plot, yield_table)
 importFrom(stats, uniroot, optimize, rnorm, rlnorm, runif, splinefun,
            quantile, median, sd)
 importFrom(ggplot2, ggplot, aes, geom_line, geom_point, geom_vline,
-           geom_hline, geom_bar, geom_histogram, geom_tile, geom_segment,
-           labs, theme_minimal, scale_fill_gradient2, coord_flip,
-           element_text, facet_wrap)
+           geom_hline, geom_bar, geom_col, geom_histogram, geom_tile,
+           geom_segment, geom_area, annotate,
+           labs, theme_minimal, scale_fill_gradient2, scale_fill_brewer,
+           scale_color_manual, scale_fill_manual, coord_flip,
+           element_text, facet_wrap, theme)
 importFrom(dplyr, filter, mutate, "%>%")
