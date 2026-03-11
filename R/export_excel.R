@@ -1931,3 +1931,225 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
 
   openxlsx::protectWorksheet(wb, sn, protect = TRUE)
 }
+
+
+# =============================================================================
+# SHEET 10: SUMMARY
+# =============================================================================
+.build_summary_sheet <- function(wb, s, title, author, yield_tbl, schedule,
+                                   discount_rate, regen_cost, annual_cost,
+                                   time_horizon, has_yield, has_schedule) {
+  sn <- "Summary"
+  openxlsx::addWorksheet(wb, sn)
+
+  # ---- Header ----
+  openxlsx::writeData(wb, sn, title, startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  if (nchar(author) > 0) {
+    openxlsx::writeData(wb, sn, paste("Prepared by:", author),
+                         startCol = 1, startRow = 2)
+  }
+  openxlsx::writeData(wb, sn,
+    paste("Generated:", format(Sys.Date(), "%B %d, %Y")),
+    startCol = 1, startRow = 3)
+
+  # ---- Parameters (linked from Parameters sheet) ----
+  openxlsx::writeData(wb, sn, "Analysis Parameters",
+                       startCol = 1, startRow = 5)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 5, cols = 1:3)
+
+  sum_params <- c("Discount Rate", "Regeneration Cost", "Annual Cost",
+                   "Time Horizon")
+  sum_refs <- c("Parameters!$B$8", "Parameters!$B$9",
+                "Parameters!$B$10", "Parameters!$B$11")
+  for (i in seq_along(sum_params)) {
+    row <- 5 + i
+    openxlsx::writeData(wb, sn, sum_params[i], startCol = 1, startRow = row)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = row, cols = 1)
+    openxlsx::writeFormula(wb, sn, sum_refs[i], startCol = 2, startRow = row)
+  }
+
+  # Product prices
+  if (has_yield) {
+    price_label_row <- 11
+    openxlsx::writeData(wb, sn, "Product Prices",
+                         startCol = 1, startRow = price_label_row)
+    openxlsx::addStyle(wb, sn, s$subheader, rows = price_label_row, cols = 1:3)
+
+    for (j in seq_along(yield_tbl$product_names)) {
+      pn <- yield_tbl$product_names[j]
+      row <- price_label_row + j
+      unit <- if (!is.null(yield_tbl$product_units) &&
+                  pn %in% names(yield_tbl$product_units)) {
+        yield_tbl$product_units[[pn]]
+      } else "unit"
+
+      openxlsx::writeData(wb, sn, paste0(pn, " ($/", unit, ")"),
+                           startCol = 1, startRow = row)
+      openxlsx::addStyle(wb, sn, s$param_label, rows = row, cols = 1)
+      price_ref <- paste0("Parameters!$B$", 13 + j)
+      openxlsx::writeFormula(wb, sn, price_ref, startCol = 2, startRow = row)
+      openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+    }
+  }
+
+  # ---- Key Results ----
+  result_start <- if (has_yield) 11 + length(yield_tbl$product_names) + 2 else 12
+  openxlsx::writeData(wb, sn, "Key Results",
+                       startCol = 1, startRow = result_start)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = result_start, cols = 1:3)
+
+  result_row <- result_start + 1
+
+  if (has_yield) {
+    opt <- tryCatch(
+      optimal_rotation_mp(yield_tbl, regen_cost, annual_cost, discount_rate),
+      error = function(e) NULL
+    )
+    if (!is.null(opt)) {
+      openxlsx::writeData(wb, sn, "Optimal Rotation (LEV)",
+                           startCol = 1, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$param_label, rows = result_row, cols = 1)
+      openxlsx::writeData(wb, sn, paste0(round(opt$optimal_age), " years"),
+                           startCol = 2, startRow = result_row)
+      result_row <- result_row + 1
+
+      openxlsx::writeData(wb, sn, "Maximum LEV",
+                           startCol = 1, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$param_label, rows = result_row, cols = 1)
+      openxlsx::writeData(wb, sn, round(opt$value_at_optimum, 2),
+                           startCol = 2, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = result_row, cols = 2)
+      result_row <- result_row + 1
+
+      openxlsx::writeData(wb, sn, "Revenue at Optimum",
+                           startCol = 1, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$param_label, rows = result_row, cols = 1)
+      openxlsx::writeData(wb, sn, round(opt$revenue_at_optimum, 2),
+                           startCol = 2, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = result_row, cols = 2)
+      result_row <- result_row + 1
+
+      # Product breakdown
+      result_row <- result_row + 1
+      openxlsx::writeData(wb, sn, "Product Breakdown at Optimal Age",
+                           startCol = 1, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$subheader, rows = result_row, cols = 1:3)
+      result_row <- result_row + 1
+
+      pd_headers <- c("Product", "Volume", "Value ($)")
+      for (hc in seq_along(pd_headers)) {
+        openxlsx::writeData(wb, sn, pd_headers[hc],
+                             startCol = hc, startRow = result_row)
+        openxlsx::addStyle(wb, sn, s$col_header, rows = result_row, cols = hc)
+      }
+      result_row <- result_row + 1
+
+      for (rr in seq_len(nrow(opt$product_detail))) {
+        openxlsx::writeData(wb, sn, opt$product_detail$product[rr],
+                             startCol = 1, startRow = result_row)
+        openxlsx::writeData(wb, sn, round(opt$product_detail$volume[rr], 1),
+                             startCol = 2, startRow = result_row)
+        openxlsx::writeData(wb, sn, round(opt$product_detail$value[rr], 2),
+                             startCol = 3, startRow = result_row)
+        openxlsx::addStyle(wb, sn, s$result_currency,
+                            rows = result_row, cols = 3)
+        result_row <- result_row + 1
+      }
+    }
+  }
+
+  if (has_schedule) {
+    result_row <- result_row + 1
+    sched_npv <- tryCatch(
+      npv_schedule(
+        schedule[, c("amount", "year", "frequency", "period_length")],
+        discount_rate, time_horizon),
+      error = function(e) NA
+    )
+
+    openxlsx::writeData(wb, sn, "Schedule NPV",
+                         startCol = 1, startRow = result_row)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = result_row, cols = 1)
+    if (!is.na(sched_npv)) {
+      openxlsx::writeData(wb, sn, round(sched_npv, 2),
+                           startCol = 2, startRow = result_row)
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = result_row, cols = 2)
+    }
+    result_row <- result_row + 1
+  }
+
+  # ---- Sheet guide ----
+  result_row <- result_row + 2
+  openxlsx::writeData(wb, sn, "Workbook Guide",
+                       startCol = 1, startRow = result_row)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = result_row, cols = 1:3)
+  result_row <- result_row + 1
+
+  sheet_guide <- data.frame(
+    Sheet = character(), Description = character(),
+    stringsAsFactors = FALSE
+  )
+  sheet_guide <- rbind(sheet_guide, data.frame(
+    Sheet = "Parameters",
+    Description = "Edit yellow cells to change all calculations",
+    stringsAsFactors = FALSE))
+  if (has_yield) {
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Yield Table",
+      Description = "Edit volumes to match your stand data",
+      stringsAsFactors = FALSE))
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Rotation Analysis",
+      Description = "NPV/LEV at each age with ranking (formula-computed)",
+      stringsAsFactors = FALSE))
+  }
+  if (has_schedule) {
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Cash Flow",
+      Description = "Year-by-year discounted cash flows",
+      stringsAsFactors = FALSE))
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Financial Metrics",
+      Description = "IRR, NPV, MIRR, B/C ratio, EAA (Excel formulas)",
+      stringsAsFactors = FALSE))
+  }
+  if (has_yield) {
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Sensitivity",
+      Description = "Two-way tables: LEV & rotation vs rate x price",
+      stringsAsFactors = FALSE))
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Break-Even",
+      Description = "Minimum price, max cost, and IRR at each age",
+      stringsAsFactors = FALSE))
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Scenarios",
+      Description = "Compare Base, Optimistic, Pessimistic, Custom",
+      stringsAsFactors = FALSE))
+  }
+  sheet_guide <- rbind(sheet_guide, data.frame(
+    Sheet = "Charts",
+    Description = "Visualizations (static, re-export to update)",
+    stringsAsFactors = FALSE))
+
+  openxlsx::writeData(wb, sn, sheet_guide, startCol = 1, startRow = result_row,
+                       headerStyle = s$col_header)
+
+  # ---- Notes ----
+  note_row <- result_row + nrow(sheet_guide) + 3
+  openxlsx::writeData(wb, sn,
+    paste0("Notes: Sheets with formulas (Rotation Analysis, Cash Flow, ",
+           "Financial Metrics) update automatically when you change Parameters. ",
+           "Sensitivity, Break-Even, Scenarios, and Charts are R-computed ",
+           "snapshots — re-export from R to update these."),
+    startCol = 1, startRow = note_row)
+  openxlsx::addStyle(wb, sn, s$note, rows = note_row, cols = 1)
+  openxlsx::mergeCells(wb, sn, cols = 1:3, rows = note_row)
+
+  openxlsx::setColWidths(wb, sn, cols = 1:3, widths = c(30, 20, 16))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
