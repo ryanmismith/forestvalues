@@ -7,7 +7,7 @@
 #'
 #'@param Flow Value of asset or revenue/expense
 #'@param Class asset or flow class use either "Expense"/"Revenue" or "Positive"/"Negative"
-#'@param Occurance Years from today the revenue occurs. Today is year 0.
+#'@param Occurrence Years from today the revenue occurs. Today is year 0.
 #'@param Discount Discount rate. Enter as .05 or .07, etc. Do not enter vector only single number.
 #'@param NegativeValues if set to FALSE will change flow values to negative numbers for
 #'expenses and negative assets that have not been
@@ -22,21 +22,21 @@
 #'
 #' Flow <- c(-400, -100, 0, 200, 6600)
 #' Class <- c("expense", "Expense", "Revenue", "Revenue", "Revenue")
-#' Occurance <- c(0,5,8,15,30)
+#' Occurrence <- c(0,5,8,15,30)
 #' Discount <- .06
-#' NPV(Flow, Class, Occurance, Discount)
+#' NPV(Flow, Class, Occurrence, Discount)
 #'
 #' \dontrun{
 #' Example if flows are not given negative values when they are expenses
 #' Flow <- c(400, 100, 0, 200, 6600)
 #' Class <- c("negative", "negative", "positive", "positive", "positive")
-#' Occurance <- c(0,5,8,15,30)
+#' Occurrence <- c(0,5,8,15,30)
 #' Discount <- .06
 #' NegativeValues == FALSE
 #' }
 #'@export
 
-SimpleNPV <- function(Flow, Class, Occurance, Discount, NegativeValues = TRUE){
+SimpleNPV <- function(Flow, Class, Occurrence, Discount, NegativeValues = TRUE){
 
 
 # If flow values are not indicated as positive or negative ----------------
@@ -64,13 +64,13 @@ SimpleNPV <- function(Flow, Class, Occurance, Discount, NegativeValues = TRUE){
 # Create DF for mapply ----------------------------------------------------
 
 
-  ValueTable <- data.frame(Flow, Class, Occurance, Discount)
+  ValueTable <- data.frame(Flow, Class, Occurrence, Discount)
 
 
 # Internal Function Call --------------------------------------------------
 
   ValueTable$PV <- mapply(PresentValue, ValueTable$Flow,
-                          ValueTable$Discount, ValueTable$Occurance)
+                          ValueTable$Discount, ValueTable$Occurrence)
 
 # Calculate, round, and return total NPV ----------------------------------
   NPV <- sum(ValueTable$PV)

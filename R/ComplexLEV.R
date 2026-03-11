@@ -2,12 +2,12 @@
 
 
 ComplexLEV <- function(Flow, Class,
-                       Frequency, FirstOccurance,
+                       Frequency, FirstOccurrence,
                        TimeHorizon, Rate,
                        PeriodLength = NA,
                        Discount){
 
-  Occurance <- FirstOccurance
+  Occurrence <- FirstOccurrence
   # Add checks to catch data entry errors -----------------------------------
 
   # Flow Variable
@@ -34,9 +34,9 @@ ComplexLEV <- function(Flow, Class,
                Must be 'Single', 'Periodic', or 'Annual'"))
 
   # Make Sure first occurance values are entered
-  ifelse(is.numeric(Occurance) == TRUE,
-         print("No Occurance Entries Missed"),
-         stop("Occurance must have a numeric value equal to the year of event."))
+  ifelse(is.numeric(Occurrence) == TRUE,
+         print("No Occurrence Entries Missed"),
+         stop("Occurrence must have a numeric value equal to the year of event."))
 
   # Only One time horizon can be run at a time (mapply over list for multiple)
   ifelse(length(TimeHorizon) == 1,
@@ -58,12 +58,12 @@ ComplexLEV <- function(Flow, Class,
   TimeHorizon <- rep(TimeHorizon, length(Flow))
   TimeHorizon <- TimeHorizon[1:length(Flow)]
   # Create Dataframe --------------------------------------------------------
-  Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
+  Data <- data.frame(Flow, Class, Frequency, Occurrence, TimeHorizon, Rate,
                      PeriodLength)
 
 
   # Create Different Compounding Lengths based on event occurance -----------
-  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurance)
+  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurrence)
 
 
   # Filter All Events Into Like Classes ----------------------------------
@@ -96,10 +96,10 @@ ComplexLEV <- function(Flow, Class,
   TotalPeriodicCosts <- sum(TotalPeriodicCosts)
 
   #Annual Costs
-  TotalAnnualCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
-                             PeriodicCosts$Rate, PeriodicCosts$Frequency,
-                             PeriodLength = PeriodicCosts$PeriodLength,
-                             Termination = PeriodicCosts$CompoundingLength,
+  TotalAnnualCosts <- mapply(SeriesPayment, AnnualCosts$Flow,
+                             AnnualCosts$Rate, AnnualCosts$Frequency,
+                             PeriodLength = AnnualCosts$PeriodLength,
+                             Termination = AnnualCosts$CompoundingLength,
                              Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualCosts <- ifelse(length(TotalAnnualCosts) == 0, 0,
@@ -144,10 +144,10 @@ ComplexLEV <- function(Flow, Class,
 
 
   # Annual Revenues ---------------------------------------------------------
-  TotalAnnualRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
-                                PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
-                                PeriodLength = PeriodicRevenues$PeriodLength,
-                                Termination = PeriodicRevenues$CompoundingLength,
+  TotalAnnualRevenues <- mapply(SeriesPayment, AnnualRevenues$Flow,
+                                AnnualRevenues$Rate, AnnualRevenues$Frequency,
+                                PeriodLength = AnnualRevenues$PeriodLength,
+                                Termination = AnnualRevenues$CompoundingLength,
                                 Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualRevenues <- ifelse(length(TotalAnnualRevenues) == 0, 0,

@@ -1,35 +1,55 @@
-#' ComplexNPV
+#' Complex Net Present Value
 #'
-#' This function calculates a single asset's value
-#' at a specific time at a single discount rate.
+#' Calculates NPV for complex management scenarios with mixed payment types
+#' (single, annual, periodic) and frequencies. Compounds all cash flows to the
+#' time horizon, then discounts the net flow to present value.
 #'
-#' Run function at multiple discount rates for sensitivity analysis.
+#' This function handles scenarios where a forest management plan includes
+#' one-time costs (planting, PCT), recurring annual costs (property tax),
+#' and periodic costs/revenues (validation inventories, thinning cycles).
 #'
-#'@param Flow cash flow/asset/expense of interest.
-#'@param Discount Discount rate. Enter percent as .05 or .07, etc. Do not enter vector only single number.
-#'@param Year age at which you want to know flow's value.
+#' @param Flow Numeric vector. Cash flow amounts (all positive; sign determined by Class).
+#' @param Class Character vector. "Revenue"/"Expense" or "Positive"/"Negative" for each flow.
+#' @param Frequency Character vector. "Single", "Annual", or "Periodic" for each flow.
+#' @param FirstOccurrence Numeric vector. Year each flow first occurs (0 = today).
+#' @param TimeHorizon Numeric scalar. Total analysis period in years.
+#' @param Rate Numeric vector. Interest/discount rate for compounding each flow.
+#' @param PeriodLength Numeric vector. Years between periodic payments (NA for non-periodic).
+#' @param Discount Numeric scalar. Discount rate for final NPV calculation.
 #'
-#'@return Present Value
+#' @return Numeric scalar. The net present value of the management scenario.
 #'
-#'@family Value Functions
+#' @family Value Functions
 #'
-#'@examples
+#' @references
+#' Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill.
 #'
-#'PresentValue(100000, .06, 30)
-#'PresentValue(100000, .06, 20)
-#'PresentValue(100000, .07, 30)
-#'PresentValue(100000, .07, 20)
+#' Bettinger, P., Boston, K., Siry, J.P., & Grebner, D.L. (2017).
+#' *Forest Management and Planning*. 2nd ed. Academic Press.
 #'
-#'@export
+#' @examples
+#' # Carbon credit scenario: planting, carbon payment, taxes, validation, harvest
+#' ComplexNPV(
+#'   Flow = c(750, 4000, 50, 500, 750, 2000),
+#'   Class = c("Expense", "Revenue", "Expense", "Expense", "Expense", "Revenue"),
+#'   Frequency = c("Single", "Single", "Annual", "Periodic", "Single", "Single"),
+#'   FirstOccurrence = c(0, 0, 0, 10, 15, 40),
+#'   TimeHorizon = 40,
+#'   Rate = c(0.06, 0.06, 0.06, 0.06, 0.06, 0.06),
+#'   PeriodLength = c(NA, NA, NA, 10, NA, NA),
+#'   Discount = 0.06
+#' )
+#'
+#' @export
 
 
 ComplexNPV <- function(Flow, Class,
-                       Frequency, FirstOccurance,
+                       Frequency, FirstOccurrence,
                        TimeHorizon, Rate,
                        PeriodLength = NA,
                        Discount){
 
-  Occurance <- FirstOccurance
+  Occurrence <- FirstOccurrence
 # Add checks to catch data entry errors -----------------------------------
 
   # Flow Variable
@@ -56,9 +76,9 @@ ComplexNPV <- function(Flow, Class,
                Must be 'Single', 'Periodic', or 'Annual'"))
 
   # Make Sure first occurance values are entered
-  ifelse(is.numeric(Occurance) == TRUE,
-      print("No Occurance Entries Missed"),
-      stop("Occurance must have a numeric value equal to the year of event."))
+  ifelse(is.numeric(Occurrence) == TRUE,
+      print("No Occurrence Entries Missed"),
+      stop("Occurrence must have a numeric value equal to the year of event."))
 
   # Only One time horizon can be run at a time (mapply over list for multiple)
   ifelse(length(TimeHorizon) == 1,
@@ -80,12 +100,12 @@ ComplexNPV <- function(Flow, Class,
     TimeHorizon <- rep(TimeHorizon, length(Flow))
     TimeHorizon <- TimeHorizon[1:length(Flow)]
 # Create Dataframe --------------------------------------------------------
-     Data <- data.frame(Flow, Class, Frequency, Occurance, TimeHorizon, Rate,
+     Data <- data.frame(Flow, Class, Frequency, Occurrence, TimeHorizon, Rate,
                      PeriodLength)
 
 
 # Create Different Compounding Lengths based on event occurance -----------
-  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurance)
+  Data <- Data %>% mutate(CompoundingLength = TimeHorizon - Occurrence)
 
 
 # Filter All Events Into Like Classes ----------------------------------
@@ -118,10 +138,10 @@ ComplexNPV <- function(Flow, Class,
   TotalPeriodicCosts <- sum(TotalPeriodicCosts)
 
   #Annual Costs
-  TotalAnnualCosts <- mapply(SeriesPayment, PeriodicCosts$Flow,
-                         PeriodicCosts$Rate, PeriodicCosts$Frequency,
-                         PeriodLength = PeriodicCosts$PeriodLength,
-                         Termination = PeriodicCosts$CompoundingLength,
+  TotalAnnualCosts <- mapply(SeriesPayment, AnnualCosts$Flow,
+                         AnnualCosts$Rate, AnnualCosts$Frequency,
+                         PeriodLength = AnnualCosts$PeriodLength,
+                         Termination = AnnualCosts$CompoundingLength,
                          Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualCosts <- ifelse(length(TotalAnnualCosts) == 0, 0,
@@ -166,10 +186,10 @@ ComplexNPV <- function(Flow, Class,
 
 
 # Annual Revenues ---------------------------------------------------------
-  TotalAnnualRevenues <- mapply(SeriesPayment, PeriodicRevenues$Flow,
-                             PeriodicRevenues$Rate, PeriodicRevenues$Frequency,
-                             PeriodLength = PeriodicRevenues$PeriodLength,
-                             Termination = PeriodicRevenues$CompoundingLength,
+  TotalAnnualRevenues <- mapply(SeriesPayment, AnnualRevenues$Flow,
+                             AnnualRevenues$Rate, AnnualRevenues$Frequency,
+                             PeriodLength = AnnualRevenues$PeriodLength,
+                             Termination = AnnualRevenues$CompoundingLength,
                              Present = FALSE)
   # Sum and Allow mathematical operations when length(list) = 0
   TotalAnnualRevenues <- ifelse(length(TotalAnnualRevenues) == 0, 0,

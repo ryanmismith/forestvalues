@@ -2,13 +2,13 @@
 % Please edit documentation in R/ComplexNPV.R
 \name{ComplexNPV}
 \alias{ComplexNPV}
-\title{ComplexNPV}
+\title{Complex Net Present Value}
 \usage{
 ComplexNPV(
   Flow,
   Class,
   Frequency,
-  FirstOccurance,
+  FirstOccurrence,
   TimeHorizon,
   Rate,
   PeriodLength = NA,
@@ -16,32 +16,57 @@ ComplexNPV(
 )
 }
 \arguments{
-\item{Flow}{cash flow/asset/expense of interest.}
+\item{Flow}{Numeric vector. Cash flow amounts (all positive; sign determined by Class).}
 
-\item{Discount}{Discount rate. Enter percent as .05 or .07, etc. Do not enter vector only single number.}
+\item{Class}{Character vector. "Revenue"/"Expense" or "Positive"/"Negative" for each flow.}
 
-\item{Year}{age at which you want to know flow's value.}
+\item{Frequency}{Character vector. "Single", "Annual", or "Periodic" for each flow.}
+
+\item{FirstOccurrence}{Numeric vector. Year each flow first occurs (0 = today).}
+
+\item{TimeHorizon}{Numeric scalar. Total analysis period in years.}
+
+\item{Rate}{Numeric vector. Interest/discount rate for compounding each flow.}
+
+\item{PeriodLength}{Numeric vector. Years between periodic payments (NA for non-periodic).}
+
+\item{Discount}{Numeric scalar. Discount rate for final NPV calculation.}
 }
 \value{
-Present Value
+Numeric scalar. The net present value of the management scenario.
 }
 \description{
-This function calculates a single asset's value
-at a specific time at a single discount rate.
+Calculates NPV for complex management scenarios with mixed payment types
+(single, annual, periodic) and frequencies. Compounds all cash flows to the
+time horizon, then discounts the net flow to present value.
 }
 \details{
-Run function at multiple discount rates for sensitivity analysis.
+This function handles scenarios where a forest management plan includes
+one-time costs (planting, PCT), recurring annual costs (property tax),
+and periodic costs/revenues (validation inventories, thinning cycles).
 }
 \examples{
-
-PresentValue(100000, .06, 30)
-PresentValue(100000, .06, 20)
-PresentValue(100000, .07, 30)
-PresentValue(100000, .07, 20)
+# Carbon credit scenario: planting, carbon payment, taxes, validation, harvest
+ComplexNPV(
+  Flow = c(750, 4000, 50, 500, 750, 2000),
+  Class = c("Expense", "Revenue", "Expense", "Expense", "Expense", "Revenue"),
+  Frequency = c("Single", "Single", "Annual", "Periodic", "Single", "Single"),
+  FirstOccurrence = c(0, 0, 0, 10, 15, 40),
+  TimeHorizon = 40,
+  Rate = c(0.06, 0.06, 0.06, 0.06, 0.06, 0.06),
+  PeriodLength = c(NA, NA, NA, 10, NA, NA),
+  Discount = 0.06
+)
 
 }
+\references{
+Klemperer, W.D. (1996). \emph{Forest Resource Economics and Finance}. McGraw-Hill.
+
+Bettinger, P., Boston, K., Siry, J.P., & Grebner, D.L. (2017).
+\emph{Forest Management and Planning}. 2nd ed. Academic Press.
+}
 \seealso{
-Other Value Functions: 
+Other Value Functions:
 \code{\link{PresentValue}()},
 \code{\link{SimpleNPV}()}
 }

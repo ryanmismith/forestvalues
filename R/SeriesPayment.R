@@ -70,29 +70,36 @@ SeriesPayment <- function(Flow,
 
   data <- data.frame(Flow, Rate, Frequency, Termination, Present, PeriodLength)
 
-  for(i in length(data$Flow)){
+  for(i in seq_len(nrow(data))){
     if(data$Frequency[i] == "Annual"){
       if(is.na(data$Termination[i]) == TRUE){
-        data$val[i] <- data$Flow[i]/data$Rate[i]
+        # Annual perpetuity PV: V = A / r
+        data$val[i] <- data$Flow[i] / data$Rate[i]
        } else {
         if(data$Present[i] == FALSE){
-          data$val[i] <- (data$Flow[i]*((((1+data$Rate[i])^data$Termination[i]))-1))/data$Rate[i]
+          # Annual terminating FV: V = A * ((1+r)^n - 1) / r
+          data$val[i] <- (data$Flow[i] * (((1 + data$Rate[i])^data$Termination[i]) - 1)) /
+            data$Rate[i]
         } else {
-          data$val[i] <- (data$Flow[i]*((((1+data$Rate[i])^data$Termination[i]))-1))/
-            (data$Rate[i]*((1+data$Rate[i])^data$Termination[i]))
+          # Annual terminating PV: V = A * ((1+r)^n - 1) / (r * (1+r)^n)
+          data$val[i] <- (data$Flow[i] * (((1 + data$Rate[i])^data$Termination[i]) - 1)) /
+            (data$Rate[i] * ((1 + data$Rate[i])^data$Termination[i]))
         }
       }
     } else {
    if(data$Frequency[i] == "Periodic"){
      if(is.na(data$Termination[i]) == TRUE){
-       data$val[i] <- data$Flow[i]/((1+data$Rate[i])^data$PeriodLength[i]-1)
+       # Periodic perpetuity PV: V = A / ((1+r)^p - 1)
+       data$val[i] <- data$Flow[i] / ((1 + data$Rate[i])^data$PeriodLength[i] - 1)
      } else {
        if(data$Present[i] == FALSE){
-         data$val[i] <- (data$Flow[i]*((1+data$Rate[i])^data$Termination[i]-1))/
-           ((1+data$Rate[i])^data$PeriodLength[i]-1)
+         # Periodic terminating FV: V = A * ((1+r)^n - 1) / ((1+r)^p - 1)
+         data$val[i] <- (data$Flow[i] * ((1 + data$Rate[i])^data$Termination[i] - 1)) /
+           ((1 + data$Rate[i])^data$PeriodLength[i] - 1)
        } else {
-         data$val[i] <- (data$Flow[i]*((1+data$Rate[i])^data$Termination[i]-1))/
-           (((1+data$Rate[i])^data$PeriodLength[i]-1)*((1+data$Rate[i])^data$Termination[i]))
+         # Periodic terminating PV: V = A * ((1+r)^n - 1) / (((1+r)^p - 1) * (1+r)^n)
+         data$val[i] <- (data$Flow[i] * ((1 + data$Rate[i])^data$Termination[i] - 1)) /
+           (((1 + data$Rate[i])^data$PeriodLength[i] - 1) * ((1 + data$Rate[i])^data$Termination[i]))
        }
       }
      }
