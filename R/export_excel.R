@@ -292,3 +292,271 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                               lockFormattingCells = FALSE,
                               lockFormattingColumns = FALSE)
 }
+
+
+# =============================================================================
+# SHEET 2: YIELD TABLE
+# =============================================================================
+.build_yield_table_sheet <- function(wb, s, yield_tbl) {
+  sn <- "Yield Table"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Yield Table (editable volumes)",
+                       startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "Edit volume cells (yellow) to match your stand data. Values auto-compute from Parameters prices.",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  # Headers: Age | Prod1 Vol | Prod1 Val | Prod2 Vol | ... | Total Value
+  start_row <- 4
+  col <- 1
+  openxlsx::writeData(wb, sn, "Age", startCol = col, startRow = start_row)
+  openxlsx::addStyle(wb, sn, s$col_header, rows = start_row, cols = col)
+
+  prod_vol_cols <- list()
+  prod_val_cols <- list()
+
+  for (pn in yield_tbl$product_names) {
+    col <- col + 1
+    openxlsx::writeData(wb, sn, paste0(pn, " Volume"),
+                         startCol = col, startRow = start_row)
+    openxlsx::addStyle(wb, sn, s$col_header, rows = start_row, cols = col)
+    prod_vol_cols[[pn]] <- col
+
+    col <- col + 1
+    openxlsx::writeData(wb, sn, paste0(pn, " Value ($)"),
+                         startCol = col, startRow = start_row)
+    openxlsx::addStyle(wb, sn, s$col_header_blue, rows = start_row, cols = col)
+    prod_val_cols[[pn]] <- col
+  }
+
+  col <- col + 1
+  openxlsx::writeData(wb, sn, "Total Value ($)",
+                       startCol = col, startRow = start_row)
+  openxlsx::addStyle(wb, sn, s$col_header_blue, rows = start_row, cols = col)
+  total_val_col <- col
+
+  # Percent of total column
+  col <- col + 1
+  pct_col <- col
+  for (pn in yield_tbl$product_names) {
+    openxlsx::writeData(wb, sn, paste0(pn, " %"),
+                         startCol = col, startRow = start_row)
+    openxlsx::addStyle(wb, sn, s$col_header_orange, rows = start_row, cols = col)
+    col <- col + 1
+  }
+
+  # Data rows
+  price_start_row <- 14  # product prices on Parameters sheet
+  for (i in seq_along(yield_tbl$ages)) {
+    data_row <- start_row + i
+    age <- yield_tbl$ages[i]
+
+    openxlsx::writeData(wb, sn, age, startCol = 1, startRow = data_row)
+
+    sum_parts <- c()
+    for (j in seq_along(yield_tbl$product_names)) {
+      pn <- yield_tbl$product_names[j]
+      pdata <- yield_tbl$products[[pn]]
+      vol_col <- prod_vol_cols[[pn]]
+      val_col <- prod_val_cols[[pn]]
+
+      # Volume: editable yellow cell
+      openxlsx::writeData(wb, sn, pdata$volume[i],
+                           startCol = vol_col, startRow = data_row)
+      openxlsx::addStyle(wb, sn, s$editable,
+                          rows = data_row, cols = vol_col)
+
+      # Value: formula = volume * price from Parameters
+      vol_cell <- paste0(openxlsx::int2col(vol_col), data_row)
+      price_cell <- paste0("Parameters!$B$", price_start_row + j - 1)
+      formula <- paste0(vol_cell, "*", price_cell)
+      openxlsx::writeFormula(wb, sn, formula,
+                              startCol = val_col, startRow = data_row)
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = data_row, cols = val_col)
+
+      sum_parts <- c(sum_parts, paste0(openxlsx::int2col(val_col), data_row))
+    }
+
+    # Total value: sum of product values
+    total_formula <- paste(sum_parts, collapse = "+")
+    openxlsx::writeFormula(wb, sn, total_formula,
+                            startCol = total_val_col, startRow = data_row)
+    openxlsx::addStyle(wb, sn, s$result_currency,
+                        rows = data_row, cols = total_val_col)
+
+    # Product percentage columns
+    for (j in seq_along(yield_tbl$product_names)) {
+      pn <- yield_tbl$product_names[j]
+      val_col <- prod_val_cols[[pn]]
+      pct_c <- pct_col + j - 1
+      val_ref <- paste0(openxlsx::int2col(val_col), data_row)
+      total_ref <- paste0(openxlsx::int2col(total_val_col), data_row)
+      # Guard against division by zero
+      pct_f <- paste0("IF(", total_ref, "=0,0,", val_ref, "/", total_ref, ")")
+      openxlsx::writeFormula(wb, sn, pct_f,
+                              startCol = pct_c, startRow = data_row)
+      openxlsx::addStyle(wb, sn, s$result_pct,
+                          rows = data_row, cols = pct_c)
+    }
+  }
+
+  n_cols <- pct_col + length(yield_tbl$product_names) - 1
+  openxlsx::setColWidths(wb, sn, cols = 1:n_cols,
+                          widths = c(8, rep(14, n_cols - 1)))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE,
+                              lockFormattingCells = FALSE)
+
+  # Return layout info for other sheets
+  list(
+    start_row = start_row,
+    total_val_col = total_val_col,
+    prod_vol_cols = prod_vol_cols,
+    prod_val_cols = prod_val_cols,
+    data_start_row = start_row + 1,
+    n_data_rows = length(yield_tbl$ages)
+  )
+}
+
+
+# =============================================================================
+# SHEET 3: ROTATION ANALYSIS
+# =============================================================================
+.build_rotation_sheet <- function(wb, s, yield_tbl, yt_info) {
+  sn <- "Rotation Analysis"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Rotation Age Analysis", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "All values computed via Excel formulas referencing Parameters sheet.",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  # Headers
+  ra_headers <- c("Age", "Total Revenue", "PV Revenue", "PV Annual Cost",
+                   "Rotation NPV", "LEV", "NPV Rank", "LEV Rank")
+  ra_start <- 4
+  for (hc in seq_along(ra_headers)) {
+    openxlsx::writeData(wb, sn, ra_headers[hc],
+                         startCol = hc, startRow = ra_start)
+    header_sty <- if (hc <= 1) s$col_header else s$col_header_blue
+    openxlsx::addStyle(wb, sn, header_sty, rows = ra_start, cols = hc)
+  }
+
+  # Cell references to Parameters
+  rate_ref <- "Parameters!$B$8"
+  regen_ref <- "Parameters!$B$9"
+  annual_ref <- "Parameters!$B$10"
+
+  # One row per age
+  n_ages <- length(yield_tbl$ages)
+  for (i in seq_along(yield_tbl$ages)) {
+    row <- ra_start + i
+    age <- yield_tbl$ages[i]
+
+    # A: Age
+    openxlsx::writeData(wb, sn, age, startCol = 1, startRow = row)
+
+    # B: Total Revenue = from Yield Table total value column
+    tv_col_letter <- openxlsx::int2col(yt_info$total_val_col)
+    rev_ref <- paste0("'Yield Table'!", tv_col_letter,
+                       yt_info$data_start_row + i - 1)
+    openxlsx::writeFormula(wb, sn, rev_ref, startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+
+    # C: PV Revenue = revenue / (1+r)^age
+    pv_rev_f <- paste0("B", row, "/(1+", rate_ref, ")^A", row)
+    openxlsx::writeFormula(wb, sn, pv_rev_f, startCol = 3, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 3)
+
+    # D: PV Annual Cost = annual * ((1+r)^n - 1) / (r*(1+r)^n)
+    pv_annual_f <- paste0("IF(", annual_ref, "=0,0,",
+                           annual_ref, "*((1+", rate_ref, ")^A", row,
+                           "-1)/(", rate_ref, "*(1+", rate_ref, ")^A", row, "))")
+    openxlsx::writeFormula(wb, sn, pv_annual_f, startCol = 4, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 4)
+
+    # E: Rotation NPV = PV Revenue - Regen - PV Annual
+    npv_f <- paste0("C", row, "-", regen_ref, "-D", row)
+    openxlsx::writeFormula(wb, sn, npv_f, startCol = 5, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 5)
+
+    # F: LEV = NPV * (1+r)^T / ((1+r)^T - 1)
+    lev_f <- paste0("E", row, "*(1+", rate_ref, ")^A", row,
+                     "/((1+", rate_ref, ")^A", row, "-1)")
+    openxlsx::writeFormula(wb, sn, lev_f, startCol = 6, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 6)
+
+    # G: NPV Rank (1 = best)
+    first_data <- ra_start + 1
+    last_data <- ra_start + n_ages
+    npv_range <- paste0("$E$", first_data, ":$E$", last_data)
+    rank_npv_f <- paste0("RANK(E", row, ",", npv_range, ")")
+    openxlsx::writeFormula(wb, sn, rank_npv_f, startCol = 7, startRow = row)
+
+    # H: LEV Rank (1 = best)
+    lev_range <- paste0("$F$", first_data, ":$F$", last_data)
+    rank_lev_f <- paste0("RANK(F", row, ",", lev_range, ")")
+    openxlsx::writeFormula(wb, sn, rank_lev_f, startCol = 8, startRow = row)
+  }
+
+  # Conditional formatting: color scale on LEV column (green=high, red=low)
+  first_row <- ra_start + 1
+  last_row <- ra_start + n_ages
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 6, rows = first_row:last_row,
+    style = c("#F8696B", "#FFEB84", "#63BE7B"),
+    type = "colourScale"
+  )
+
+  # Conditional formatting: color scale on NPV column
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 5, rows = first_row:last_row,
+    style = c("#F8696B", "#FFEB84", "#63BE7B"),
+    type = "colourScale"
+  )
+
+  # Highlight the best LEV row with icon sets on rank column
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 8, rows = first_row:last_row,
+    type = "dataBar", style = c("#63BE7B")
+  )
+
+  # Summary row at bottom
+  sum_row <- last_row + 2
+  openxlsx::writeData(wb, sn, "Best Rotation (Max LEV):",
+                       startCol = 1, startRow = sum_row)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row, cols = 1)
+
+  # Formula to find age with highest LEV using INDEX/MATCH
+  age_range <- paste0("$A$", first_row, ":$A$", last_row)
+  lev_range <- paste0("$F$", first_row, ":$F$", last_row)
+  best_age_f <- paste0("INDEX(", age_range, ",MATCH(MAX(", lev_range, "),",
+                        lev_range, ",0))")
+  openxlsx::writeFormula(wb, sn, best_age_f, startCol = 2, startRow = sum_row)
+
+  openxlsx::writeData(wb, sn, "years", startCol = 3, startRow = sum_row)
+
+  openxlsx::writeData(wb, sn, "Max LEV:", startCol = 1, startRow = sum_row + 1)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row + 1, cols = 1)
+  max_lev_f <- paste0("MAX(", lev_range, ")")
+  openxlsx::writeFormula(wb, sn, max_lev_f, startCol = 2,
+                          startRow = sum_row + 1)
+  openxlsx::addStyle(wb, sn, s$result_currency, rows = sum_row + 1, cols = 2)
+
+  openxlsx::writeData(wb, sn, "Max NPV:", startCol = 1, startRow = sum_row + 2)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row + 2, cols = 1)
+  npv_range_ref <- paste0("$E$", first_row, ":$E$", last_row)
+  max_npv_f <- paste0("MAX(", npv_range_ref, ")")
+  openxlsx::writeFormula(wb, sn, max_npv_f, startCol = 2,
+                          startRow = sum_row + 2)
+  openxlsx::addStyle(wb, sn, s$result_currency, rows = sum_row + 2, cols = 2)
+
+  openxlsx::setColWidths(wb, sn, cols = 1:8,
+                          widths = c(8, 16, 16, 16, 16, 16, 10, 10))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
