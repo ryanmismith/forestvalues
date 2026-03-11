@@ -1133,3 +1133,227 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           widths = c(14, rep(10, length(sensitivity_prices))))
   openxlsx::protectWorksheet(wb, sn, protect = TRUE)
 }
+
+
+# =============================================================================
+# SHEET 7: BREAK-EVEN ANALYSIS
+# =============================================================================
+.build_breakeven_sheet <- function(wb, s, yield_tbl, discount_rate,
+                                    regen_cost, annual_cost) {
+  sn <- "Break-Even"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Break-Even Analysis", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    paste0("What minimum price, volume, or maximum cost makes this investment ",
+           "break even (NPV = 0)? R-computed via numerical root-finding."),
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+  openxlsx::mergeCells(wb, sn, cols = 1:7, rows = 2)
+
+  # ---- Table 1: Break-even price multiplier at each rotation age ----
+  openxlsx::writeData(wb, sn, "Break-Even Stumpage Price by Rotation Age",
+                       startCol = 1, startRow = 4)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 4, cols = 1:7)
+
+  be_headers <- c("Rotation Age", "Revenue at Harvest", "NPV at Base Price",
+                   "Break-Even Price Mult.", "Break-Even Price ($)",
+                   "Margin of Safety")
+  be_start <- 5
+  for (hc in seq_along(be_headers)) {
+    openxlsx::writeData(wb, sn, be_headers[hc],
+                         startCol = hc, startRow = be_start)
+    openxlsx::addStyle(wb, sn, s$col_header_blue, rows = be_start, cols = hc)
+  }
+
+  # Get base price (first product as reference)
+  first_price <- 0
+  for (pn in yield_tbl$product_names) {
+    pdata <- yield_tbl$products[[pn]]
+    if ("price" %in% names(pdata)) {
+      first_price <- pdata$price[1]
+      break
+    }
+  }
+
+  for (i in seq_along(yield_tbl$ages)) {
+    row <- be_start + i
+    age <- yield_tbl$ages[i]
+    if (age < 10) next  # skip very young ages
+
+    openxlsx::writeData(wb, sn, age, startCol = 1, startRow = row)
+
+    # Revenue at harvest
+    rev <- yield_tbl$total_value_fn(age)
+    openxlsx::writeData(wb, sn, round(rev, 2), startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+
+    # NPV at base price
+    r <- discount_rate
+    pv_rev <- rev / (1 + r)^age
+    pv_annual <- if (annual_cost > 0 && r > 0) {
+      annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+    } else annual_cost * age
+    base_npv <- pv_rev - regen_cost - pv_annual
+
+    openxlsx::writeData(wb, sn, round(base_npv, 2), startCol = 3, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 3)
+
+    # Break-even price multiplier: find m where m*revenue/(1+r)^T - costs = 0
+    # m = (regen_cost + pv_annual) * (1+r)^T / revenue
+    if (rev > 0) {
+      be_mult <- (regen_cost + pv_annual) * (1 + r)^age / rev
+      openxlsx::writeData(wb, sn, round(be_mult, 4),
+                           startCol = 4, startRow = row)
+      openxlsx::addStyle(wb, sn, s$result, rows = row, cols = 4)
+
+      # Break-even absolute price (for first product)
+      if (first_price > 0) {
+        be_price <- first_price * be_mult
+        openxlsx::writeData(wb, sn, round(be_price, 2),
+                             startCol = 5, startRow = row)
+        openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 5)
+      }
+
+      # Margin of safety = (1 - break-even mult) as percentage
+      margin <- 1 - be_mult
+      openxlsx::writeData(wb, sn, round(margin, 4),
+                           startCol = 6, startRow = row)
+      openxlsx::addStyle(wb, sn, s$result_pct, rows = row, cols = 6)
+    }
+  }
+
+  # Conditional formatting on margin of safety
+  be_first <- be_start + 1
+  be_last <- be_start + length(yield_tbl$ages)
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 6, rows = be_first:be_last,
+    style = c("#F8696B", "#FFEB84", "#63BE7B"),
+    type = "colourScale"
+  )
+
+  # ---- Table 2: Break-even discount rate at each age ----
+  t2_start <- be_last + 3
+  openxlsx::writeData(wb, sn, "Break-Even Discount Rate by Rotation Age",
+                       startCol = 1, startRow = t2_start)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = t2_start, cols = 1:5)
+
+  be2_headers <- c("Rotation Age", "Revenue", "Total Cost (undiscounted)",
+                    "Break-Even Rate (IRR)", "vs Base Rate")
+  t2_hdr <- t2_start + 1
+  for (hc in seq_along(be2_headers)) {
+    openxlsx::writeData(wb, sn, be2_headers[hc],
+                         startCol = hc, startRow = t2_hdr)
+    openxlsx::addStyle(wb, sn, s$col_header_blue, rows = t2_hdr, cols = hc)
+  }
+
+  for (i in seq_along(yield_tbl$ages)) {
+    row <- t2_hdr + i
+    age <- yield_tbl$ages[i]
+    if (age < 10) next
+
+    openxlsx::writeData(wb, sn, age, startCol = 1, startRow = row)
+
+    rev <- yield_tbl$total_value_fn(age)
+    openxlsx::writeData(wb, sn, round(rev, 2), startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+
+    total_cost <- regen_cost + annual_cost * age
+    openxlsx::writeData(wb, sn, round(total_cost, 2),
+                         startCol = 3, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 3)
+
+    # IRR for single rotation: solve (rev/(1+r)^T - regen - annual*annuity = 0)
+    if (rev > regen_cost) {
+      irr_fn <- function(r) {
+        if (r <= 0) return(Inf)
+        pv_r <- rev / (1 + r)^age
+        pv_a <- if (annual_cost > 0 && r > 0) {
+          annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+        } else annual_cost * age
+        pv_r - regen_cost - pv_a
+      }
+
+      be_rate <- tryCatch({
+        result <- stats::uniroot(irr_fn, interval = c(0.001, 1),
+                                  extendInt = "no")
+        result$root
+      }, error = function(e) NA)
+
+      if (!is.na(be_rate)) {
+        openxlsx::writeData(wb, sn, round(be_rate, 6),
+                             startCol = 4, startRow = row)
+        openxlsx::addStyle(wb, sn, s$result_pct, rows = row, cols = 4)
+
+        # Spread vs base rate
+        spread <- be_rate - discount_rate
+        openxlsx::writeData(wb, sn, round(spread, 6),
+                             startCol = 5, startRow = row)
+        openxlsx::addStyle(wb, sn, s$result_pct, rows = row, cols = 5)
+      }
+    }
+  }
+
+  # Color scale on break-even rate
+  t2_first <- t2_hdr + 1
+  t2_last <- t2_hdr + length(yield_tbl$ages)
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 4, rows = t2_first:t2_last,
+    style = c("#F8696B", "#FFEB84", "#63BE7B"),
+    type = "colourScale"
+  )
+
+  # ---- Table 3: Maximum affordable costs ----
+  t3_start <- t2_last + 3
+  openxlsx::writeData(wb, sn,
+    "Maximum Affordable Costs (at base price and discount rate)",
+    startCol = 1, startRow = t3_start)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = t3_start, cols = 1:5)
+
+  t3_headers <- c("Rotation Age", "Max Regen Cost", "Max Annual Cost",
+                   "Max Total Cost (PV)")
+  t3_hdr <- t3_start + 1
+  for (hc in seq_along(t3_headers)) {
+    openxlsx::writeData(wb, sn, t3_headers[hc],
+                         startCol = hc, startRow = t3_hdr)
+    openxlsx::addStyle(wb, sn, s$col_header_blue, rows = t3_hdr, cols = hc)
+  }
+
+  r <- discount_rate
+  for (i in seq_along(yield_tbl$ages)) {
+    row <- t3_hdr + i
+    age <- yield_tbl$ages[i]
+    if (age < 10) next
+
+    openxlsx::writeData(wb, sn, age, startCol = 1, startRow = row)
+
+    rev <- yield_tbl$total_value_fn(age)
+    pv_rev <- rev / (1 + r)^age
+
+    # Max regen = PV revenue - PV annual cost (holding annual constant)
+    pv_annual <- if (annual_cost > 0 && r > 0) {
+      annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+    } else annual_cost * age
+    max_regen <- pv_rev - pv_annual
+    openxlsx::writeData(wb, sn, round(max(max_regen, 0), 2),
+                         startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+
+    # Max annual = (PV revenue - regen) / annuity factor
+    annuity_factor <- if (r > 0) ((1 + r)^age - 1) / (r * (1 + r)^age) else age
+    max_annual <- if (annuity_factor > 0) (pv_rev - regen_cost) / annuity_factor else 0
+    openxlsx::writeData(wb, sn, round(max(max_annual, 0), 2),
+                         startCol = 3, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 3)
+
+    # Max total PV cost
+    openxlsx::writeData(wb, sn, round(max(pv_rev, 0), 2),
+                         startCol = 4, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 4)
+  }
+
+  openxlsx::setColWidths(wb, sn, cols = 1:6,
+                          widths = c(14, 18, 16, 20, 20, 16))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
