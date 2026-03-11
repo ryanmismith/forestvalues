@@ -894,3 +894,242 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           widths = c(8, 14, 4, 36, 18, 44))
   openxlsx::protectWorksheet(wb, sn, protect = TRUE)
 }
+
+
+# =============================================================================
+# SHEET 6: SENSITIVITY ANALYSIS
+# =============================================================================
+.build_sensitivity_sheet <- function(wb, s, yield_tbl, discount_rate,
+                                      regen_cost, annual_cost,
+                                      sensitivity_rates, sensitivity_prices) {
+  sn <- "Sensitivity"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Sensitivity Analysis", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "Two-way tables showing how LEV and NPV change with discount rate and stumpage price. R-computed values.",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  # Default price multipliers
+  if (is.null(sensitivity_prices)) {
+    sensitivity_prices <- seq(0.5, 1.5, by = 0.1)
+  }
+
+  # Get base prices for first product (or total)
+  base_prices <- list()
+  for (pn in yield_tbl$product_names) {
+    pdata <- yield_tbl$products[[pn]]
+    base_prices[[pn]] <- if ("price" %in% names(pdata)) pdata$price[1] else 0
+  }
+
+  # ---- TABLE 1: LEV vs Discount Rate x Price Multiplier ----
+  openxlsx::writeData(wb, sn, "LEV Sensitivity: Discount Rate vs Price Level",
+                       startCol = 1, startRow = 4)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 4, cols = 1:15)
+
+  # Column headers: price multipliers
+  t1_start_row <- 5
+  openxlsx::writeData(wb, sn, "Rate \\ Price", startCol = 1,
+                       startRow = t1_start_row)
+  openxlsx::addStyle(wb, sn, s$col_header, rows = t1_start_row, cols = 1)
+
+  for (j in seq_along(sensitivity_prices)) {
+    pct_label <- paste0(round(sensitivity_prices[j] * 100), "%")
+    openxlsx::writeData(wb, sn, pct_label,
+                         startCol = 1 + j, startRow = t1_start_row)
+    header_sty <- if (sensitivity_prices[j] == 1.0) s$col_header else s$col_header_blue
+    openxlsx::addStyle(wb, sn, header_sty,
+                        rows = t1_start_row, cols = 1 + j)
+  }
+
+  # Compute LEV grid (R-computed since this requires spline interpolation)
+  for (i in seq_along(sensitivity_rates)) {
+    row <- t1_start_row + i
+    rate <- sensitivity_rates[i]
+
+    # Row header
+    openxlsx::writeData(wb, sn, paste0(round(rate * 100, 1), "%"),
+                         startCol = 1, startRow = row)
+    rate_sty <- if (abs(rate - discount_rate) < 1e-6) s$col_header else s$param_label
+    openxlsx::addStyle(wb, sn, rate_sty, rows = row, cols = 1)
+
+    for (j in seq_along(sensitivity_prices)) {
+      price_mult <- sensitivity_prices[j]
+
+      # Build modified yield table with scaled prices
+      scaled_products <- yield_tbl$products
+      for (pn in yield_tbl$product_names) {
+        if ("price" %in% names(scaled_products[[pn]])) {
+          scaled_products[[pn]]$price <- scaled_products[[pn]]$price * price_mult
+        }
+      }
+      temp_yt <- tryCatch(
+        yield_table(yield_tbl$ages, scaled_products, yield_tbl$product_units),
+        error = function(e) NULL
+      )
+
+      if (!is.null(temp_yt)) {
+        opt <- tryCatch(
+          optimal_rotation_mp(temp_yt, regen_cost, annual_cost, rate),
+          error = function(e) NULL
+        )
+        lev_val <- if (!is.null(opt)) opt$value_at_optimum else NA
+      } else {
+        lev_val <- NA
+      }
+
+      openxlsx::writeData(wb, sn, if (is.na(lev_val)) "N/A" else round(lev_val, 2),
+                           startCol = 1 + j, startRow = row)
+      openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 1 + j)
+    }
+  }
+
+  # Conditional formatting: 3-color scale on the LEV grid
+  t1_first_row <- t1_start_row + 1
+  t1_last_row <- t1_start_row + length(sensitivity_rates)
+  t1_first_col <- 2
+  t1_last_col <- 1 + length(sensitivity_prices)
+  openxlsx::conditionalFormatting(
+    wb, sn,
+    cols = t1_first_col:t1_last_col,
+    rows = t1_first_row:t1_last_row,
+    style = c("#F8696B", "#FFEB84", "#63BE7B"),
+    type = "colourScale"
+  )
+
+  # ---- TABLE 2: Optimal Rotation vs Discount Rate x Price ----
+  t2_offset <- t1_last_row + 3
+  openxlsx::writeData(wb, sn,
+    "Optimal Rotation Age: Discount Rate vs Price Level",
+    startCol = 1, startRow = t2_offset)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = t2_offset, cols = 1:15)
+
+  t2_start_row <- t2_offset + 1
+  openxlsx::writeData(wb, sn, "Rate \\ Price", startCol = 1,
+                       startRow = t2_start_row)
+  openxlsx::addStyle(wb, sn, s$col_header, rows = t2_start_row, cols = 1)
+
+  for (j in seq_along(sensitivity_prices)) {
+    pct_label <- paste0(round(sensitivity_prices[j] * 100), "%")
+    openxlsx::writeData(wb, sn, pct_label,
+                         startCol = 1 + j, startRow = t2_start_row)
+    header_sty <- if (sensitivity_prices[j] == 1.0) s$col_header else s$col_header_blue
+    openxlsx::addStyle(wb, sn, header_sty,
+                        rows = t2_start_row, cols = 1 + j)
+  }
+
+  for (i in seq_along(sensitivity_rates)) {
+    row <- t2_start_row + i
+    rate <- sensitivity_rates[i]
+
+    openxlsx::writeData(wb, sn, paste0(round(rate * 100, 1), "%"),
+                         startCol = 1, startRow = row)
+    rate_sty <- if (abs(rate - discount_rate) < 1e-6) s$col_header else s$param_label
+    openxlsx::addStyle(wb, sn, rate_sty, rows = row, cols = 1)
+
+    for (j in seq_along(sensitivity_prices)) {
+      price_mult <- sensitivity_prices[j]
+
+      scaled_products <- yield_tbl$products
+      for (pn in yield_tbl$product_names) {
+        if ("price" %in% names(scaled_products[[pn]])) {
+          scaled_products[[pn]]$price <- scaled_products[[pn]]$price * price_mult
+        }
+      }
+      temp_yt <- tryCatch(
+        yield_table(yield_tbl$ages, scaled_products, yield_tbl$product_units),
+        error = function(e) NULL
+      )
+
+      if (!is.null(temp_yt)) {
+        opt <- tryCatch(
+          optimal_rotation_mp(temp_yt, regen_cost, annual_cost, rate),
+          error = function(e) NULL
+        )
+        opt_age <- if (!is.null(opt)) round(opt$optimal_age) else NA
+      } else {
+        opt_age <- NA
+      }
+
+      openxlsx::writeData(wb, sn, if (is.na(opt_age)) "N/A" else opt_age,
+                           startCol = 1 + j, startRow = row)
+    }
+  }
+
+  # Color scale on rotation ages (blue = short, orange = long)
+  t2_first_row <- t2_start_row + 1
+  t2_last_row <- t2_start_row + length(sensitivity_rates)
+  openxlsx::conditionalFormatting(
+    wb, sn,
+    cols = t1_first_col:t1_last_col,
+    rows = t2_first_row:t2_last_row,
+    style = c("#5DADE2", "#F9E79F", "#E67E22"),
+    type = "colourScale"
+  )
+
+  # ---- TABLE 3: One-way sensitivity on regen cost ----
+  t3_offset <- t2_last_row + 3
+  openxlsx::writeData(wb, sn,
+    "LEV Sensitivity to Regeneration Cost",
+    startCol = 1, startRow = t3_offset)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = t3_offset, cols = 1:6)
+
+  regen_range <- seq(0, regen_cost * 3, length.out = 13)
+  regen_range <- round(regen_range / 50) * 50  # round to nearest $50
+
+  t3_headers <- c("Regen Cost", "LEV", "Optimal Rotation", "Change in LEV")
+  t3_start <- t3_offset + 1
+  for (hc in seq_along(t3_headers)) {
+    openxlsx::writeData(wb, sn, t3_headers[hc],
+                         startCol = hc, startRow = t3_start)
+    openxlsx::addStyle(wb, sn, s$col_header_blue, rows = t3_start, cols = hc)
+  }
+
+  base_lev <- NULL
+  for (i in seq_along(regen_range)) {
+    row <- t3_start + i
+    rc <- regen_range[i]
+
+    openxlsx::writeData(wb, sn, rc, startCol = 1, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 1)
+
+    opt <- tryCatch(
+      optimal_rotation_mp(yield_tbl, rc, annual_cost, discount_rate),
+      error = function(e) NULL
+    )
+    if (!is.null(opt)) {
+      if (is.null(base_lev) && abs(rc - regen_cost) < 1) {
+        base_lev <- opt$value_at_optimum
+      }
+      openxlsx::writeData(wb, sn, round(opt$value_at_optimum, 2),
+                           startCol = 2, startRow = row)
+      openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+      openxlsx::writeData(wb, sn, round(opt$optimal_age),
+                           startCol = 3, startRow = row)
+      if (!is.null(base_lev) && base_lev != 0) {
+        change <- (opt$value_at_optimum - base_lev) / abs(base_lev)
+        openxlsx::writeData(wb, sn, round(change, 4),
+                             startCol = 4, startRow = row)
+        openxlsx::addStyle(wb, sn, s$result_pct, rows = row, cols = 4)
+      }
+    }
+
+    # Highlight base case row
+    if (abs(rc - regen_cost) < 1) {
+      openxlsx::addStyle(wb, sn, s$scenario_base, rows = row, cols = 1:4,
+                          stack = TRUE)
+    }
+  }
+
+  # Data bars on LEV column
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2, rows = (t3_start + 1):(t3_start + length(regen_range)),
+    type = "dataBar", style = c("#27AE60")
+  )
+
+  openxlsx::setColWidths(wb, sn, cols = 1:(1 + length(sensitivity_prices)),
+                          widths = c(14, rep(10, length(sensitivity_prices))))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
