@@ -1016,6 +1016,12 @@ The `export_excel()` function creates formatted Excel workbooks designed for
 practitioners who are comfortable with spreadsheets. Workbooks contain **live
 Excel formulas** — change a parameter cell and results update automatically.
 
+The function can generate up to **10 sheets** depending on what data you
+provide. Three of those sheets (Rotation Analysis, Cash Flow, Financial
+Metrics) use native Excel formulas that recalculate live. The others
+(Sensitivity, Break-Even, Scenarios, Charts) are R-computed snapshots —
+re-export the workbook to update them.
+
 ## Key Features
 
 - **Parameter cells** (highlighted yellow) are unlocked for editing: discount rate,
@@ -1023,14 +1029,95 @@ Excel formulas** — change a parameter cell and results update automatically.
 - **Result cells** (formulas, computed values) are locked to prevent accidental changes
 - **Live formulas** reference the Parameters sheet, so changing one value cascades
   through all calculations
+- **Conditional formatting** — color scales on LEV/NPV, data bars on cumulative NPV,
+  red/green on costs/revenues
+- **Native Excel functions** — IRR(), NPV(), MIRR(), PMT() on the Financial Metrics sheet
 - **Worksheet protection** is enabled (no password) so locked cells can't be
   accidentally overwritten
 
-## Basic Usage
+## Data Requirements
+
+`export_excel()` accepts two primary data inputs. You can provide either or both:
+**one of these must be non-NULL.**
+
+### 1. Yield Table (`yield_tbl`)
+
+A `yield_table` object created with `yield_table()`. This is a multi-product
+timber yield schedule specifying volume by age and product.
+
+**Required structure:**
 
 ```{r}
 #| eval: false
-# With a yield table
+yt <- yield_table(
+  ages = seq(10, 80, by = 10),        # evaluation ages (years)
+  products = list(
+    sawlog = data.frame(
+      volume = c(0, 0, 2, 5, 10, 16, 20, 22),  # volume per acre at each age
+      price = 254                                 # $/MBF stumpage price
+    ),
+    pulpwood = data.frame(
+      volume = c(5, 12, 18, 22, 24, 25, 25, 24),
+      price = 9                                   # $/ton
+    )
+  ),
+  product_units = c(sawlog = "mbf", pulpwood = "ton")  # optional labels
+)
+```
+
+**When provided, generates these sheets:** Yield Table, Rotation Analysis,
+Sensitivity, Break-Even, Scenarios, Charts (LEV curve, product mix, tornado).
+
+### 2. Management Schedule (`schedule`)
+
+A `data.frame` describing management activities over time.
+
+**Required columns:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `name` | character | Activity label (e.g., "Planting", "Tax") |
+| `amount` | numeric | Dollar amount (negative = cost, positive = revenue) |
+| `year` | numeric | Year the activity occurs |
+| `frequency` | character | `"once"` or `"annual"` |
+| `period_length` | numeric | Duration for annual items, or `NA` |
+
+**Example:**
+
+```{r}
+#| eval: false
+activities <- data.frame(
+  name = c("Planting", "Annual Tax", "PCT", "Thinning", "Final Harvest"),
+  amount = c(-750, -50, -200, 2500, 8500),
+  year = c(0, 0, 8, 25, 45),
+  frequency = c("once", "annual", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA)
+)
+```
+
+**When provided, generates these sheets:** Cash Flow, Financial Metrics.
+
+## Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `discount_rate` | `0.06` | Real discount rate (as decimal, e.g., 0.06 = 6%) |
+| `regen_cost` | `0` | Regeneration cost ($/acre) |
+| `annual_cost` | `0` | Annual carrying cost — taxes, insurance, etc. ($/acre/yr) |
+| `time_horizon` | `80` | Analysis horizon in years |
+| `file` | `"forest_analysis.xlsx"` | Output file path (must end `.xlsx`) |
+| `title` | `"Forest Economics Analysis"` | Header title in workbook |
+| `author` | `""` | Author name in header |
+| `sensitivity_rates` | `seq(0.02, 0.12, 0.01)` | Discount rates for sensitivity table |
+| `sensitivity_prices` | `NULL` | Price multipliers (NULL = 50%–150% in 10% steps) |
+| `include_charts` | `TRUE` | Embed ggplot2 charts as images? |
+
+## Basic Usage
+
+### Yield table only — rotation analysis focus
+
+```{r}
+#| eval: false
 export_excel(yt, discount_rate = 0.06, regen_cost = 750,
              annual_cost = 50, time_horizon = 80,
              file = "stand_analysis.xlsx",
@@ -1038,55 +1125,63 @@ export_excel(yt, discount_rate = 0.06, regen_cost = 750,
              author = "J. Forester")
 ```
 
-This produces a workbook with:
+**Produces 8 sheets:** Parameters, Yield Table, Rotation Analysis, Sensitivity,
+Break-Even, Scenarios, Charts, Summary.
 
-1. **Parameters** — editable discount rate, costs, prices
-2. **Yield Table** — volumes by age and product (editable)
-3. **Rotation Analysis** — NPV and LEV at each age (formula-computed)
-4. **Summary** — optimal rotation, max LEV, product breakdown
-
-## With a Management Schedule
+### Schedule only — cash flow analysis focus
 
 ```{r}
 #| eval: false
-activities <- data.frame(
-  name = c("Planting", "Annual Tax", "Thinning", "Final Harvest"),
-  amount = c(-750, -50, 1200, 8500),
-  year = c(0, 0, 25, 45),
-  frequency = c("once", "annual", "once", "once"),
-  period_length = c(NA, NA, NA, NA)
-)
-
 export_excel(schedule = activities, discount_rate = 0.06,
              time_horizon = 45, file = "harvest_plan.xlsx")
 ```
 
-## Combined Analysis
+**Produces 5 sheets:** Parameters, Cash Flow, Financial Metrics, Charts, Summary.
 
-Supply both a yield table and a schedule for the most complete workbook:
+### Combined — full analysis
 
 ```{r}
 #| eval: false
 export_excel(yt, schedule = activities, discount_rate = 0.06,
              regen_cost = 750, annual_cost = 50, time_horizon = 80,
-             file = "full_analysis.xlsx")
+             file = "full_analysis.xlsx",
+             title = "Township 7 Range 10 — Stand Analysis",
+             author = "Ryan Smith")
 ```
 
-### Best Practices
+**Produces all 10 sheets.**
 
-- Use descriptive `title` and `author` fields — they appear in the workbook header
-- Share the workbook alongside your report so colleagues can test "what-if" scenarios
-  by editing the yellow parameter cells
-- If adding custom rows or columns, avoid overwriting formula cells (they are locked
-  when protection is enabled)
+### Custom sensitivity grid
 
-### Limitations
+```{r}
+#| eval: false
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             file = "sensitivity_focus.xlsx",
+             sensitivity_rates = seq(0.03, 0.10, by = 0.005),
+             sensitivity_prices = seq(0.6, 1.4, by = 0.05))
+```
 
-- Product breakdown at the optimal rotation is static (R-computed), not formula-based,
-  because optimal rotation requires numerical optimization that Excel formulas cannot
-  replicate
+## Best Practices
+
+- Use descriptive `title` and `author` — they appear in the workbook header
+  and Summary sheet
+- Share the workbook alongside your report so colleagues can test "what-if"
+  scenarios by editing the yellow parameter cells
+- Use `include_charts = FALSE` on headless servers or automated pipelines
+  where no graphics device is available
+- Keep `sensitivity_rates` and `sensitivity_prices` to reasonable ranges
+  (10–15 values each) to avoid very large spreadsheets
+
+## Limitations
+
+- Sensitivity, Break-Even, Scenarios, and Charts are **R-computed snapshots**.
+  They do NOT update when you change Parameters in Excel. Re-export from R to refresh.
+- Product breakdown at the optimal rotation is static because optimal rotation
+  requires numerical optimization that Excel formulas cannot replicate.
 - Requires the `openxlsx` package (`install.packages("openxlsx")`)
-- Very large yield tables (hundreds of ages) may produce large files
+- Charts require `ggplot2` and an active graphics device.
+- Very large yield tables (hundreds of ages) or dense sensitivity grids
+  may produce large files.
 
 ---
 
@@ -1157,3 +1252,665 @@ export_excel(yt, schedule = activities, discount_rate = 0.06,
 - Samuelson, P.A. (1976). "Economics of forestry in an evolving society." *Economic Inquiry* 14(4): 466-492.
 - Thomson, T.A. (1992). "Optimal forest rotation when stumpage prices follow a diffusion process." *Land Economics* 68(3): 329-342.
 - Yoshimoto, A. & Shoji, I. (1998). "Searching for an optimal rotation age under stochastic log prices." *European Journal of Operational Research* 105(1): 100-112.
+
+---
+
+# Appendix A: Excel Export — Sheet-by-Sheet Reference {#sec-appendix-excel .unnumbered}
+
+This appendix provides a detailed reference for every sheet that `export_excel()`
+can produce, including what data is required to trigger each sheet, what each cell
+contains, how to use it, and practical worked examples.
+
+## Sheet Overview {.unnumbered}
+
+| # | Sheet | Requires | Type | Auto-updates? |
+|---|-------|----------|------|---------------|
+| 1 | Parameters | Always | Editable | N/A — this IS the source |
+| 2 | Yield Table | `yield_tbl` | Editable + Formulas | Yes (values = vol x price) |
+| 3 | Rotation Analysis | `yield_tbl` | All Formulas | Yes (references Parameters) |
+| 4 | Cash Flow | `schedule` | Formulas | Yes (references Parameters) |
+| 5 | Financial Metrics | `schedule` | Excel Native Functions | Yes (IRR, NPV, etc.) |
+| 6 | Sensitivity | `yield_tbl` | R-computed | No — re-export to update |
+| 7 | Break-Even | `yield_tbl` | R-computed | No — re-export to update |
+| 8 | Scenarios | `yield_tbl` | R-computed | No — re-export to update |
+| 9 | Charts | `yield_tbl` or `schedule` | Embedded images | No — re-export to update |
+| 10 | Summary | Always | Mixed | Partially (linked params update) |
+
+## A.1 Parameters Sheet {.unnumbered}
+
+**Always created.** This is the single source of truth. Every formula in the
+workbook references cells on this sheet.
+
+### Cell Map {.unnumbered}
+
+| Cell | Contents | Editable? |
+|------|----------|-----------|
+| B8 | Discount rate (as decimal, e.g. 0.06) | Yes (yellow, %) |
+| B9 | Regeneration cost ($/acre) | Yes (yellow) |
+| B10 | Annual cost ($/acre/yr) | Yes (yellow) |
+| B11 | Time horizon (years) | Yes (yellow) |
+| B14 | First product price | Yes (yellow) |
+| B15 | Second product price | Yes (yellow) |
+| B16+ | Additional product prices | Yes (yellow) |
+
+### How to Use {.unnumbered}
+
+1. Open the workbook and go to the **Parameters** sheet
+2. Change any yellow cell (e.g., set B8 to `0.08` to test an 8% rate)
+3. Switch to Rotation Analysis or Cash Flow — results update instantly
+4. The Cell Reference Guide at the bottom shows which cell controls what
+
+### Use Cases {.unnumbered}
+
+- **"What if the discount rate rises to 8%?"** — change B8 and watch LEV drop
+- **"What if stumpage prices increase 20%?"** — multiply B14 by 1.2
+- **"How sensitive is the result to annual taxes?"** — try doubling B10
+
+## A.2 Yield Table Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Displays volume-by-age data for each product. Volume cells are editable (yellow);
+value cells are formulas (`= volume * Parameters price`). Includes product
+percentage columns showing each product's share of total value at each age.
+
+### Layout {.unnumbered}
+
+| Column | Contents |
+|--------|----------|
+| A | Age (years) |
+| B | Product 1 Volume (editable) |
+| C | Product 1 Value = B * Parameters!$B$14 |
+| D | Product 2 Volume (editable) |
+| E | Product 2 Value = D * Parameters!$B$15 |
+| ... | Additional products |
+| N | Total Value = sum of all product values |
+| N+1 | Product 1 % of total |
+| N+2 | Product 2 % of total |
+
+### How to Use {.unnumbered}
+
+- Edit volumes in yellow cells to match your stand inventory data
+- Values recalculate automatically when you change volumes OR prices on Parameters
+- Percentage columns help identify when the product mix shifts (e.g., when sawlog
+  value exceeds pulpwood)
+
+### Data Required {.unnumbered}
+
+```{r}
+#| eval: false
+# Minimum: ages and at least one product with volume and price
+yt <- yield_table(
+  ages = seq(10, 60, by = 5),
+  products = list(
+    timber = data.frame(volume = c(0, 0, 2, 5, 8, 12, 16, 19, 21, 22, 22),
+                        price = 200)
+  )
+)
+```
+
+## A.3 Rotation Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Computes NPV and LEV at every yield table age using full Excel formula chains.
+No R values are hard-coded — everything recalculates live.
+
+### Columns {.unnumbered}
+
+| Column | Formula |
+|--------|---------|
+| A | Age |
+| B | Total Revenue (linked from Yield Table) |
+| C | PV Revenue = `B/(1+rate)^A` |
+| D | PV Annual Cost = `annual * ((1+r)^A - 1) / (r*(1+r)^A)` |
+| E | Rotation NPV = `C - regen - D` |
+| F | LEV = `E * (1+r)^A / ((1+r)^A - 1)` |
+| G | NPV Rank (1 = best, via `RANK()`) |
+| H | LEV Rank |
+
+### Visual Features {.unnumbered}
+
+- **3-color scale** on NPV and LEV columns (red = low, yellow = mid, green = high)
+- **Data bars** on LEV Rank column
+- **Summary section** below the table: `INDEX/MATCH` formulas find the best rotation
+  age and maximum LEV automatically
+
+### Use Cases {.unnumbered}
+
+- **Determining optimal Faustmann rotation** — look at the LEV column; the green
+  cell with Rank = 1 is your answer
+- **Comparing financial vs biological rotation** — NPV rank shows maximum single-rotation
+  return; LEV rank shows infinite-horizon optimum
+- **Exploring how the optimal rotation shifts** — change the discount rate on Parameters
+  and watch the green highlight move
+
+## A.4 Cash Flow Sheet {.unnumbered}
+
+**Requires:** `schedule` argument.
+
+Expands management activities into a year-by-year schedule with formula-based
+discounting.
+
+### Layout {.unnumbered}
+
+**Top section:** Management Activities table (amounts are editable in yellow).
+
+**Bottom section:** Year-by-year schedule:
+
+| Column | Contents |
+|--------|----------|
+| A | Year |
+| B | Cash Flow (nominal, from schedule expansion) |
+| C | Cumulative nominal (running sum formula) |
+| D | Discount Factor = `1/(1+rate)^year` |
+| E | Discounted CF = `B * D` |
+| F | Cumulative NPV (running sum of E) |
+| G | % of Total NPV = `F / |final F|` |
+
+### Visual Features {.unnumbered}
+
+- **Red/green conditional formatting** on cash flows (costs red, revenues green)
+- **Data bars** on Cumulative NPV column
+- **Summary below the table:** Total NPV, Total Undiscounted, Payback Period (via
+  `INDEX/MATCH` finding first year where cumulative NPV >= 0)
+
+### Data Required {.unnumbered}
+
+```{r}
+#| eval: false
+# Must have columns: name, amount, year, frequency, period_length
+activities <- data.frame(
+  name = c("Planting", "Annual Tax", "Pre-commercial Thin",
+           "Commercial Thin", "Final Harvest"),
+  amount = c(-750, -50, -200, 2500, 8500),
+  year = c(0, 0, 8, 25, 45),
+  frequency = c("once", "annual", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA)
+)
+```
+
+### Use Cases {.unnumbered}
+
+- **Presenting a management plan to a landowner** — the year-by-year view shows
+  exactly when costs occur and when revenue comes in
+- **Estimating when the investment breaks even** — the payback period formula
+  at the bottom tells you
+- **Adjusting harvest timing** — edit the year column in the activities table
+  and re-export
+
+## A.5 Financial Metrics Sheet {.unnumbered}
+
+**Requires:** `schedule` argument.
+
+Uses **native Excel financial functions** for live computation. Change the
+discount rate on Parameters and all metrics recalculate automatically.
+
+### Metrics Computed {.unnumbered}
+
+| Metric | Excel Formula | Accept Criterion |
+|--------|---------------|------------------|
+| **IRR** | `IRR(cash_flows)` | > discount rate |
+| **NPV** | `Year0 + NPV(rate, year1..n)` | > 0 |
+| **MIRR** | `MIRR(cash_flows, rate, rate)` | > discount rate |
+| **Benefit-Cost Ratio** | `SUMPRODUCT(positive PVs) / ABS(SUMPRODUCT(negative PVs))` | > 1.0 |
+| **Profitability Index** | `NPV / PV(costs)` | > 0 |
+| **EAA** | `PMT(rate, horizon, -NPV)` | > 0 |
+| **Simple Payback** | `MATCH(first cumulative >= 0)` | Lower = better |
+
+### Layout {.unnumbered}
+
+- **Left side:** Annual Cash Flow Series (year + cash flow for each year, 0 to T)
+- **Right side:** Metrics panel with formula, result, and explanatory note
+- **Bottom:** Decision Criteria Guide table
+
+### Use Cases {.unnumbered}
+
+- **Investment committee presentation** — IRR and B/C ratio are the metrics
+  most committees want to see
+- **Comparing mutually exclusive projects** — EAA normalizes projects with
+  different time horizons into an annual equivalent
+- **"Does this beat our cost of capital?"** — compare IRR to your required
+  rate of return directly in the spreadsheet
+
+## A.6 Sensitivity Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Three R-computed sensitivity tables with conditional formatting.
+
+### Table 1: LEV vs Discount Rate x Price Multiplier {.unnumbered}
+
+A two-way data table showing LEV at every combination of discount rate and
+price level (50%–150% of base).
+
+- **Rows:** discount rates (default: 2%–12% in 1% steps)
+- **Columns:** price multipliers (default: 50%–150% in 10% steps)
+- **Color scale:** red (negative LEV) → yellow (breakeven) → green (profitable)
+- Base case row and column are highlighted with standard green headers
+
+### Table 2: Optimal Rotation Age vs Discount Rate x Price {.unnumbered}
+
+Same grid layout but showing optimal rotation age at each combination.
+
+- **Color scale:** blue (short rotation) → yellow → orange (long rotation)
+- Reveals how higher rates push rotations shorter and higher prices can
+  push them longer
+
+### Table 3: LEV vs Regeneration Cost (One-Way) {.unnumbered}
+
+Shows LEV and optimal rotation as regen cost varies from $0 to 3x the base value.
+
+- **Data bars** on LEV column
+- **% Change from base** column shows marginal impact
+- Base case row highlighted
+
+### Customizing the Grid {.unnumbered}
+
+```{r}
+#| eval: false
+# Finer resolution on rates, narrower price range
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             file = "detailed_sensitivity.xlsx",
+             sensitivity_rates = seq(0.03, 0.10, by = 0.005),
+             sensitivity_prices = seq(0.7, 1.3, by = 0.05))
+```
+
+### Use Cases {.unnumbered}
+
+- **Risk assessment** — identify which combinations of rate and price yield
+  negative LEV (the "red zone")
+- **Presenting to stakeholders** — the color-coded grid is immediately
+  intuitive; green = good, red = bad
+- **Choosing a discount rate** — see how much the answer changes across
+  plausible rates
+
+## A.7 Break-Even Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Three tables answering "what's the minimum/maximum this parameter can be before
+the investment loses money?"
+
+### Table 1: Break-Even Stumpage Price {.unnumbered}
+
+At each rotation age:
+
+| Column | Contents |
+|--------|----------|
+| Rotation Age | Age in years |
+| Revenue at Harvest | Total stumpage value from yield curve |
+| NPV at Base Price | NPV using current parameters |
+| Break-Even Price Mult. | `(costs * (1+r)^T) / revenue` — the minimum price as a fraction of current |
+| Break-Even Price ($) | Multiplier x first product's base price |
+| Margin of Safety | `1 - multiplier` — how far price can fall before NPV = 0 |
+
+Color scale on Margin of Safety: green = large cushion, red = thin margin.
+
+### Table 2: Break-Even Discount Rate (IRR) {.unnumbered}
+
+At each rotation age, solves for the rate that makes single-rotation NPV = 0
+using `uniroot()`. This is the single-rotation IRR.
+
+- Shows "vs Base Rate" spread (IRR minus your discount rate)
+- Higher spread = more cushion against rate increases
+
+### Table 3: Maximum Affordable Costs {.unnumbered}
+
+At each rotation age:
+
+- **Max Regen Cost** — highest planting cost that still yields NPV >= 0
+  (holding annual cost constant)
+- **Max Annual Cost** — highest annual cost sustainable (holding regen constant)
+- **Max Total PV Cost** — the PV of revenue, which is the absolute ceiling
+  for combined costs
+
+### Use Cases {.unnumbered}
+
+- **Bid price determination** — the break-even price tells you the floor;
+  bid above that
+- **Budget planning** — max affordable costs tell you how much you can spend
+  on site prep, planting, management
+- **Margin of safety communication** — tell a landowner "prices can fall 35%
+  before this investment loses money"
+
+## A.8 Scenario Comparison Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Four side-by-side scenarios with editable parameters and R-computed results.
+
+### Pre-Built Scenarios {.unnumbered}
+
+| Scenario | Rate | Regen Cost | Annual Cost | Price |
+|----------|------|-----------|-------------|-------|
+| **Base Case** | Your input | Your input | Your input | 100% |
+| **Optimistic** | Same | -20% | -10% | +20% |
+| **Pessimistic** | +2 ppt | +30% | +20% | -25% |
+| **Custom** | Your input | Your input | Your input | 100% |
+
+The Optimistic, Pessimistic, and Custom scenario parameters are **editable**
+(yellow cells). Edit them in Excel to define your own scenarios.
+
+### Results Section {.unnumbered}
+
+For each scenario:
+
+- Optimal Rotation (years)
+- LEV at Optimum ($)
+- Revenue at Optimum ($)
+- NPV at Optimum ($)
+- Data bars on LEV row for visual comparison
+
+### Product Breakdown Section {.unnumbered}
+
+Shows each product's dollar value at the optimal rotation for each scenario,
+so you can see how the product mix shifts under different assumptions.
+
+### Use Cases {.unnumbered}
+
+- **Presenting to a board or committee** — "here's what happens under
+  optimistic, pessimistic, and our base case"
+- **Stress testing** — the pessimistic scenario answers "how bad could it get?"
+- **Custom analysis** — edit the Custom column to test any combination of
+  parameters
+
+## A.9 Charts Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` or `schedule` argument. Set `include_charts = TRUE`
+(the default). Requires an active graphics device (not available on all
+headless servers).
+
+### Chart 1: LEV and NPV vs Rotation Age {.unnumbered}
+
+- Solid green line = LEV, dashed blue line = NPV
+- Red vertical line marks the optimal (max LEV) rotation age
+- Subtitle shows the discount rate, regen cost, and annual cost
+- **Read it:** The peak of the green line is your Faustmann-optimal rotation
+
+### Chart 2: Product Value Composition by Age {.unnumbered}
+
+- Stacked area chart showing each product's dollar contribution over time
+- Colors from `Set2` palette
+- **Read it:** The crossover point where higher-value products dominate tells you
+  when the stand "matures" economically
+
+### Chart 3: Cash Flow Timeline {.unnumbered}
+
+- Bars = nominal cash flows (green = revenue, red = cost)
+- Purple line = cumulative NPV
+- **Read it:** Where the purple line crosses zero is the discounted payback point
+
+### Chart 4: Tornado Diagram {.unnumbered}
+
+- Horizontal bars showing LEV sensitivity to each parameter (+/- 25%)
+- Vertical red dashed line = base case LEV
+- Parameters sorted by impact (widest bar at top)
+- **Read it:** The widest bar is the parameter that matters most. If discount rate
+  dominates, the investment is rate-sensitive; if stumpage price dominates,
+  market risk is the key concern
+
+### Disabling Charts {.unnumbered}
+
+```{r}
+#| eval: false
+# For automated pipelines or headless servers
+export_excel(yt, discount_rate = 0.06, file = "no_charts.xlsx",
+             include_charts = FALSE)
+```
+
+## A.10 Summary Sheet {.unnumbered}
+
+**Always created.** Provides a one-page executive overview.
+
+### Contents {.unnumbered}
+
+1. **Header** — title, author, date
+2. **Analysis Parameters** — linked to Parameters sheet via formulas (auto-update)
+3. **Product Prices** — linked to Parameters sheet
+4. **Key Results** (R-computed) — optimal rotation, max LEV, revenue at optimum,
+   product breakdown table, schedule NPV
+5. **Workbook Guide** — table describing each sheet's purpose
+6. **Notes** — which sheets auto-update vs which are snapshots
+
+### Use Cases {.unnumbered}
+
+- **Quick reference** — print this one sheet for a meeting
+- **Orientation for new users** — the Workbook Guide tells them what each tab does
+- **Report attachment** — this sheet summarizes everything in one place
+
+---
+
+# Appendix B: Complete Worked Examples {#sec-appendix-examples .unnumbered}
+
+## B.1 Southern Pine Plantation — Full Export {.unnumbered}
+
+A common use case: a loblolly pine plantation in the U.S. South with
+pulpwood and sawtimber products, annual property tax, and a pre-commercial
+thinning.
+
+```{r}
+#| eval: false
+# ---- Step 1: Build the yield table ----
+ages <- seq(10, 40, by = 5)
+yt_pine <- yield_table(
+  ages = ages,
+  products = list(
+    sawtimber = data.frame(
+      volume = c(0, 0, 0, 4, 8, 14, 18),   # MBF/acre
+      price = 210                             # $/MBF
+    ),
+    chip_n_saw = data.frame(
+      volume = c(0, 0, 3, 6, 8, 9, 9),      # MBF/acre
+      price = 95
+    ),
+    pulpwood = data.frame(
+      volume = c(8, 16, 22, 26, 28, 29, 28), # tons/acre
+      price = 9                               # $/ton
+    )
+  ),
+  product_units = c(sawtimber = "mbf", chip_n_saw = "mbf", pulpwood = "ton")
+)
+
+# ---- Step 2: Build the management schedule ----
+pine_schedule <- data.frame(
+  name = c("Site Prep & Planting", "Property Tax", "Pre-Commercial Thin",
+           "Fertilization", "Commercial Thin", "Final Harvest"),
+  amount = c(-550, -12, -125, -80, 1200, 5800),
+  year = c(0, 0, 8, 12, 18, 30),
+  frequency = c("once", "annual", "once", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA)
+)
+
+# ---- Step 3: Export ----
+export_excel(
+  yield_tbl = yt_pine,
+  schedule = pine_schedule,
+  discount_rate = 0.06,
+  regen_cost = 550,
+  annual_cost = 12,
+  time_horizon = 40,
+  file = "pine_plantation_analysis.xlsx",
+  title = "Loblolly Pine Plantation — Tract 1247",
+  author = "R. Smith, CF",
+  sensitivity_rates = seq(0.04, 0.10, by = 0.01),
+  sensitivity_prices = seq(0.6, 1.4, by = 0.1)
+)
+```
+
+**What you get:**
+
+- Parameters sheet with 3 editable product prices + 4 cost/rate parameters
+- Yield Table showing the pulpwood → sawtimber transition
+- Rotation Analysis: likely optimal around age 25–30 at 6%
+- Cash Flow: pre-commercial thin and fertilization as costs; commercial thin and
+  harvest as revenues
+- Financial Metrics: IRR, NPV, MIRR, B/C ratio, EAA, payback period
+- Sensitivity: 7 x 9 grid of LEV values across rates and price levels
+- Break-Even: minimum stumpage price at each rotation
+- Scenarios: base vs optimistic vs pessimistic vs custom
+- Charts: 4 visualizations
+- Summary: executive overview
+
+## B.2 Northern Hardwood Selection — Yield Table Only {.unnumbered}
+
+A selection-harvest system in the Lake States. No explicit management schedule
+because the focus is on sustained yield analysis at different rotation ages.
+
+```{r}
+#| eval: false
+ages <- seq(40, 120, by = 10)
+yt_hardwood <- yield_table(
+  ages = ages,
+  products = list(
+    veneer = data.frame(
+      volume = c(0, 0, 0.5, 1.5, 3, 4.5, 5.5, 6, 6),  # MBF/acre
+      price = 850
+    ),
+    sawlog = data.frame(
+      volume = c(0, 1, 3, 6, 9, 11, 12.5, 13, 12.5),
+      price = 300
+    ),
+    firewood = data.frame(
+      volume = c(3, 5, 7, 8, 8, 7, 6, 5, 4),   # cords/acre
+      price = 45
+    )
+  ),
+  product_units = c(veneer = "mbf", sawlog = "mbf", firewood = "cord")
+)
+
+export_excel(
+  yield_tbl = yt_hardwood,
+  discount_rate = 0.04,
+  regen_cost = 200,
+  annual_cost = 8,
+  time_horizon = 120,
+  file = "hardwood_selection.xlsx",
+  title = "Northern Hardwood — Selection Harvest Analysis",
+  author = "J. Forester"
+)
+```
+
+**Produced:** 8 sheets (no Cash Flow or Financial Metrics since no schedule).
+The product mix chart will show the veneer crossover point — critical for
+timing the harvest when the high-value veneer component dominates.
+
+## B.3 Investment Analysis — Schedule Only {.unnumbered}
+
+A timberland acquisition analysis. No yield table needed — just the investment
+cash flow.
+
+```{r}
+#| eval: false
+acquisition <- data.frame(
+  name = c("Land Purchase", "Property Tax", "Insurance",
+           "Road Maintenance", "Timber Sale Year 5",
+           "Timber Sale Year 15", "Land + Timber Sale"),
+  amount = c(-250000, -3200, -800, -1500, 45000, 85000, 320000),
+  year = c(0, 0, 0, 0, 5, 15, 20),
+  frequency = c("once", "annual", "annual", "annual",
+                "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA, NA)
+)
+
+export_excel(
+  schedule = acquisition,
+  discount_rate = 0.05,
+  time_horizon = 20,
+  file = "timberland_acquisition.xlsx",
+  title = "Timberland Acquisition Analysis — 500 Acres",
+  author = "Investment Committee"
+)
+```
+
+**Produced:** 5 sheets. The Financial Metrics sheet will show IRR, NPV, and
+B/C ratio — the key numbers for an investment committee. The Cash Flow sheet
+shows exactly when cash goes out and comes in, with cumulative NPV tracking
+when the investment breaks even.
+
+## B.4 Quick Comparison — No Charts, Minimal Grid {.unnumbered}
+
+For a quick export on a headless server or CI pipeline:
+
+```{r}
+#| eval: false
+export_excel(
+  yield_tbl = yt,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  file = "quick_export.xlsx",
+  include_charts = FALSE,
+  sensitivity_rates = seq(0.04, 0.08, by = 0.02),
+  sensitivity_prices = c(0.8, 1.0, 1.2)
+)
+```
+
+This produces a smaller, faster workbook with a 3 x 3 sensitivity grid and
+no embedded images.
+
+---
+
+# Appendix C: Excel Workbook Architecture {#sec-appendix-architecture .unnumbered}
+
+## Cell Reference Map {.unnumbered}
+
+All formulas across all sheets reference these cells on the Parameters sheet:
+
+```
+Parameters!$B$8   → Discount Rate (as decimal)
+Parameters!$B$9   → Regeneration Cost ($)
+Parameters!$B$10  → Annual Cost ($/yr)
+Parameters!$B$11  → Time Horizon (years)
+Parameters!$B$14  → First product price ($)
+Parameters!$B$15  → Second product price ($)
+Parameters!$B$16+ → Additional product prices
+```
+
+## Formula Chain {.unnumbered}
+
+The formula dependency graph flows in one direction:
+
+```
+Parameters (source of truth)
+    │
+    ├──→ Yield Table (vol × price)
+    │        │
+    │        └──→ Rotation Analysis (PV, NPV, LEV)
+    │
+    ├──→ Cash Flow (discount factor, cumulative NPV)
+    │        │
+    │        └──→ Financial Metrics (IRR, NPV, MIRR, EAA)
+    │
+    └──→ Summary (linked parameter display)
+```
+
+## Auto-Update vs Snapshot {.unnumbered}
+
+| Sheet | Behavior |
+|-------|----------|
+| Parameters | Source — always current |
+| Yield Table | **Auto-updates** — formulas reference Parameters prices |
+| Rotation Analysis | **Auto-updates** — full formula chain |
+| Cash Flow | **Auto-updates** — discount factor uses Parameters rate |
+| Financial Metrics | **Auto-updates** — Excel IRR/NPV on cash flow series |
+| Sensitivity | **Snapshot** — R-computed grid, frozen at export time |
+| Break-Even | **Snapshot** — R-computed via uniroot, frozen |
+| Scenarios | **Snapshot** — R-computed for each scenario, frozen |
+| Charts | **Snapshot** — embedded PNG images, frozen |
+| Summary | **Partial** — linked params update, key results are R-computed |
+
+**To refresh snapshots:** call `export_excel()` again from R with updated parameters.
+
+## Color Convention Guide {.unnumbered}
+
+| Color | Meaning |
+|-------|---------|
+| Yellow background | Editable cell — change this! |
+| Green header | Data table column header |
+| Blue header | Computed result column header |
+| Orange header | Percentage or comparison column |
+| Green text | Positive cash flow / revenue |
+| Red text | Negative cash flow / cost |
+| Green → Red color scale | High value → Low value |
+| Blue → Orange color scale | Short rotation → Long rotation |
+| Data bars | Visual magnitude comparison |
