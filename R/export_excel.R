@@ -711,3 +711,186 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
   openxlsx::protectWorksheet(wb, sn, protect = TRUE,
                               lockFormattingCells = FALSE)
 }
+
+
+# =============================================================================
+# SHEET 5: FINANCIAL METRICS
+# =============================================================================
+.build_financial_metrics_sheet <- function(wb, s, schedule, time_horizon,
+                                            discount_rate, regen_cost) {
+  sn <- "Financial Metrics"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Financial Metrics", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "Investment analysis metrics computed via Excel formulas. IRR uses Excel's native IRR function.",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  rate_ref <- "Parameters!$B$8"
+
+  # ---- Build cash flow vector for IRR/NPV formulas ----
+  # We need a contiguous column of cash flows by year for Excel's IRR()
+  cf <- cash_flow_schedule(schedule, time_horizon, discount_rate)
+
+  # Create full year vector (0 to time_horizon)
+  all_years <- 0:time_horizon
+  cf_by_year <- rep(0, length(all_years))
+  for (i in seq_len(nrow(cf))) {
+    yr_idx <- which(all_years == cf$year[i])
+    if (length(yr_idx) > 0) {
+      cf_by_year[yr_idx] <- cf_by_year[yr_idx] + cf$cash_flow[i]
+    }
+  }
+
+  # Write the cash flow series
+  openxlsx::writeData(wb, sn, "Annual Cash Flow Series",
+                       startCol = 1, startRow = 4)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 4, cols = 1:3)
+
+  cf_headers <- c("Year", "Cash Flow")
+  for (hc in seq_along(cf_headers)) {
+    openxlsx::writeData(wb, sn, cf_headers[hc], startCol = hc, startRow = 5)
+    openxlsx::addStyle(wb, sn, s$col_header, rows = 5, cols = hc)
+  }
+
+  cf_data_start <- 6
+  for (i in seq_along(all_years)) {
+    row <- cf_data_start + i - 1
+    openxlsx::writeData(wb, sn, all_years[i], startCol = 1, startRow = row)
+    openxlsx::writeData(wb, sn, cf_by_year[i], startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+  }
+  cf_data_end <- cf_data_start + length(all_years) - 1
+
+  # Conditional formatting on cash flows
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2, rows = cf_data_start:cf_data_end,
+    rule = "<0", style = s$negative
+  )
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2, rows = cf_data_start:cf_data_end,
+    rule = ">0", style = s$positive
+  )
+
+  # ---- Metrics panel (right side) ----
+  mc <- 4  # metrics start column
+  openxlsx::writeData(wb, sn, "Investment Metrics",
+                       startCol = mc, startRow = 4)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 4, cols = mc:(mc + 2))
+
+  cf_range <- paste0("$B$", cf_data_start, ":$B$", cf_data_end)
+
+  metrics <- list()
+  mrow <- 6
+
+  # 1. IRR (Excel native)
+  metrics[["Internal Rate of Return (IRR)"]] <- list(
+    formula = paste0("IFERROR(IRR(", cf_range, "),\"No solution\")"),
+    format = "pct",
+    note = "Uses Excel's native IRR() on the annual cash flow series"
+  )
+
+  # 2. NPV (Excel native — note: Excel NPV excludes year 0)
+  metrics[["Net Present Value (NPV)"]] <- list(
+    formula = paste0("B", cf_data_start, "+NPV(", rate_ref, ",",
+                      "$B$", cf_data_start + 1, ":$B$", cf_data_end, ")"),
+    format = "currency",
+    note = "= Year 0 cost + NPV(rate, year 1..n). References Parameters!B8"
+  )
+
+  # 3. MIRR (Excel native) — finance rate = discount rate, reinvest = discount rate
+  metrics[["Modified IRR (MIRR)"]] <- list(
+    formula = paste0("IFERROR(MIRR(", cf_range, ",", rate_ref, ",", rate_ref,
+                      "),\"No solution\")"),
+    format = "pct",
+    note = "Finance rate and reinvestment rate both = discount rate"
+  )
+
+  # 4. Benefit-Cost Ratio
+  # Sum of positive discounted CFs / abs(sum of negative discounted CFs)
+  metrics[["Benefit-Cost Ratio"]] <- list(
+    formula = paste0("IFERROR(SUMPRODUCT((", cf_range, ">0)*", cf_range,
+                      "/(1+", rate_ref, ")^($A$", cf_data_start, ":$A$", cf_data_end,
+                      "))/ABS(SUMPRODUCT((", cf_range, "<0)*", cf_range,
+                      "/(1+", rate_ref, ")^($A$", cf_data_start, ":$A$", cf_data_end,
+                      "))),\"N/A\")"),
+    format = "number",
+    note = "PV(revenues) / PV(costs). > 1 means profitable"
+  )
+
+  # 5. Profitability Index
+  metrics[["Profitability Index"]] <- list(
+    formula = paste0("IFERROR((B", cf_data_start, "+NPV(", rate_ref, ",",
+                      "$B$", cf_data_start + 1, ":$B$", cf_data_end,
+                      "))/ABS(SUMPRODUCT((", cf_range, "<0)*", cf_range,
+                      "/(1+", rate_ref, ")^($A$", cf_data_start, ":$A$",
+                      cf_data_end, "))),\"N/A\")"),
+    format = "number",
+    note = "NPV / PV(costs) + 1. > 0 means value created per dollar invested"
+  )
+
+  # 6. Equivalent Annual Annuity (EAA)
+  metrics[["Equivalent Annual Annuity (EAA)"]] <- list(
+    formula = paste0("IFERROR(PMT(", rate_ref, ",", time_horizon, ",-(B",
+                      cf_data_start, "+NPV(", rate_ref, ",$B$",
+                      cf_data_start + 1, ":$B$", cf_data_end,
+                      "))),\"N/A\")"),
+    format = "currency",
+    note = "Annual payment equivalent of the NPV over the time horizon"
+  )
+
+  # 7. Payback Period
+  metrics[["Simple Payback Period"]] <- list(
+    formula = paste0("IFERROR(MATCH(TRUE,MMULT(TRANSPOSE((",
+                      cf_range, ">=-99999)*1),TRANSPOSE(SEQUENCE(ROWS(",
+                      cf_range, "))))>=0,0),\"Never\")"),
+    format = "number",
+    note = "First year where cumulative undiscounted cash flow >= 0"
+  )
+
+  # Write each metric
+  for (metric_name in names(metrics)) {
+    m <- metrics[[metric_name]]
+
+    openxlsx::writeData(wb, sn, metric_name, startCol = mc, startRow = mrow)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = mrow, cols = mc)
+
+    openxlsx::writeFormula(wb, sn, m$formula,
+                            startCol = mc + 1, startRow = mrow)
+
+    if (m$format == "pct") {
+      openxlsx::addStyle(wb, sn, s$result_pct, rows = mrow, cols = mc + 1)
+    } else if (m$format == "currency") {
+      openxlsx::addStyle(wb, sn, s$result_currency, rows = mrow, cols = mc + 1)
+    } else {
+      openxlsx::addStyle(wb, sn, s$result, rows = mrow, cols = mc + 1)
+    }
+
+    # Note
+    openxlsx::writeData(wb, sn, m$note, startCol = mc + 2, startRow = mrow)
+    openxlsx::addStyle(wb, sn, s$italic_note, rows = mrow, cols = mc + 2)
+
+    mrow <- mrow + 1
+  }
+
+  # ---- Decision criteria guide ----
+  guide_row <- mrow + 2
+  openxlsx::writeData(wb, sn, "Decision Criteria Guide",
+                       startCol = mc, startRow = guide_row)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = guide_row, cols = mc:(mc + 2))
+
+  guide_data <- data.frame(
+    Metric = c("IRR", "NPV", "B/C Ratio", "Prof. Index"),
+    Accept = c("> discount rate", "> 0", "> 1.0", "> 0"),
+    Reject = c("< discount rate", "< 0", "< 1.0", "< 0"),
+    stringsAsFactors = FALSE
+  )
+  openxlsx::writeData(wb, sn, guide_data, startCol = mc,
+                       startRow = guide_row + 1, headerStyle = s$col_header_blue)
+
+  openxlsx::setColWidths(wb, sn, cols = 1:6,
+                          widths = c(8, 14, 4, 36, 18, 44))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
