@@ -1357,3 +1357,254 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           widths = c(14, 18, 16, 20, 20, 16))
   openxlsx::protectWorksheet(wb, sn, protect = TRUE)
 }
+
+
+# =============================================================================
+# SHEET 8: SCENARIO COMPARISON
+# =============================================================================
+.build_scenario_sheet <- function(wb, s, yield_tbl, discount_rate,
+                                   regen_cost, annual_cost) {
+  sn <- "Scenarios"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Scenario Comparison", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    paste0("Edit yellow cells in Alternative scenarios to compare against ",
+           "the Base Case. Results are R-computed — re-export to update after ",
+           "parameter changes."),
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+  openxlsx::mergeCells(wb, sn, cols = 1:8, rows = 2)
+
+  # Define 4 scenarios: Base, High Price, High Cost, Conservative
+  # Each scenario has its own column block
+  n_products <- length(yield_tbl$product_names)
+  base_prices <- sapply(yield_tbl$product_names, function(pn) {
+    pdata <- yield_tbl$products[[pn]]
+    if ("price" %in% names(pdata)) pdata$price[1] else 0
+  })
+
+  scenarios <- list(
+    "Base Case" = list(
+      rate = discount_rate,
+      regen = regen_cost,
+      annual = annual_cost,
+      price_mult = 1.0,
+      editable = FALSE
+    ),
+    "Optimistic" = list(
+      rate = discount_rate,
+      regen = regen_cost * 0.8,
+      annual = annual_cost * 0.9,
+      price_mult = 1.2,
+      editable = TRUE
+    ),
+    "Pessimistic" = list(
+      rate = discount_rate + 0.02,
+      regen = regen_cost * 1.3,
+      annual = annual_cost * 1.2,
+      price_mult = 0.75,
+      editable = TRUE
+    ),
+    "Custom" = list(
+      rate = discount_rate,
+      regen = regen_cost,
+      annual = annual_cost,
+      price_mult = 1.0,
+      editable = TRUE
+    )
+  )
+
+  # Layout: parameters block then results block
+  param_labels <- c("Discount Rate", "Regen Cost ($/acre)",
+                      "Annual Cost ($/acre/yr)", "Price Multiplier")
+
+  # Header row
+  hdr_row <- 4
+  openxlsx::writeData(wb, sn, "Parameter", startCol = 1, startRow = hdr_row)
+  openxlsx::addStyle(wb, sn, s$col_header, rows = hdr_row, cols = 1)
+
+  for (sc_idx in seq_along(scenarios)) {
+    sc_name <- names(scenarios)[sc_idx]
+    col <- sc_idx + 1
+
+    openxlsx::writeData(wb, sn, sc_name, startCol = col, startRow = hdr_row)
+    if (sc_idx == 1) {
+      openxlsx::addStyle(wb, sn, s$col_header, rows = hdr_row, cols = col)
+    } else {
+      openxlsx::addStyle(wb, sn, s$col_header_orange, rows = hdr_row, cols = col)
+    }
+  }
+
+  # Parameter rows
+  param_row_start <- hdr_row + 1
+  for (pi in seq_along(param_labels)) {
+    row <- param_row_start + pi - 1
+    openxlsx::writeData(wb, sn, param_labels[pi], startCol = 1, startRow = row)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = row, cols = 1)
+
+    for (sc_idx in seq_along(scenarios)) {
+      sc <- scenarios[[sc_idx]]
+      col <- sc_idx + 1
+
+      val <- switch(pi,
+        sc$rate,
+        sc$regen,
+        sc$annual,
+        sc$price_mult
+      )
+
+      openxlsx::writeData(wb, sn, val, startCol = col, startRow = row)
+
+      if (sc$editable) {
+        style <- if (pi == 1) s$editable_pct else s$editable
+        openxlsx::addStyle(wb, sn, style, rows = row, cols = col)
+      } else {
+        style <- if (pi == 1) s$result_pct else s$result_currency
+        openxlsx::addStyle(wb, sn, s$scenario_base, rows = row, cols = col)
+      }
+    }
+  }
+
+  # ---- Results section ----
+  results_start <- param_row_start + length(param_labels) + 2
+  openxlsx::writeData(wb, sn, "Results", startCol = 1, startRow = results_start)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = results_start,
+                      cols = 1:(length(scenarios) + 1))
+
+  result_labels <- c("Optimal Rotation (years)", "LEV at Optimum ($)",
+                      "Revenue at Optimum ($)", "NPV at Optimum ($)")
+
+  for (ri in seq_along(result_labels)) {
+    row <- results_start + ri
+    openxlsx::writeData(wb, sn, result_labels[ri],
+                         startCol = 1, startRow = row)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = row, cols = 1)
+  }
+
+  # Compute results for each scenario
+  for (sc_idx in seq_along(scenarios)) {
+    sc <- scenarios[[sc_idx]]
+    col <- sc_idx + 1
+
+    # Scale prices
+    scaled_products <- yield_tbl$products
+    for (pn in yield_tbl$product_names) {
+      if ("price" %in% names(scaled_products[[pn]])) {
+        scaled_products[[pn]]$price <- scaled_products[[pn]]$price * sc$price_mult
+      }
+    }
+
+    temp_yt <- tryCatch(
+      yield_table(yield_tbl$ages, scaled_products, yield_tbl$product_units),
+      error = function(e) NULL
+    )
+
+    if (!is.null(temp_yt)) {
+      opt_lev <- tryCatch(
+        optimal_rotation_mp(temp_yt, sc$regen, sc$annual, sc$rate,
+                             criterion = "lev"),
+        error = function(e) NULL
+      )
+      opt_npv <- tryCatch(
+        optimal_rotation_mp(temp_yt, sc$regen, sc$annual, sc$rate,
+                             criterion = "npv"),
+        error = function(e) NULL
+      )
+    } else {
+      opt_lev <- NULL
+      opt_npv <- NULL
+    }
+
+    row_base <- results_start
+
+    # Optimal Rotation
+    val <- if (!is.null(opt_lev)) round(opt_lev$optimal_age) else "N/A"
+    openxlsx::writeData(wb, sn, val, startCol = col, startRow = row_base + 1)
+
+    # LEV
+    val <- if (!is.null(opt_lev)) round(opt_lev$value_at_optimum, 2) else "N/A"
+    openxlsx::writeData(wb, sn, val, startCol = col, startRow = row_base + 2)
+    if (is.numeric(val)) {
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = row_base + 2, cols = col)
+    }
+
+    # Revenue
+    val <- if (!is.null(opt_lev)) round(opt_lev$revenue_at_optimum, 2) else "N/A"
+    openxlsx::writeData(wb, sn, val, startCol = col, startRow = row_base + 3)
+    if (is.numeric(val)) {
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = row_base + 3, cols = col)
+    }
+
+    # NPV
+    val <- if (!is.null(opt_npv)) round(opt_npv$value_at_optimum, 2) else "N/A"
+    openxlsx::writeData(wb, sn, val, startCol = col, startRow = row_base + 4)
+    if (is.numeric(val)) {
+      openxlsx::addStyle(wb, sn, s$result_currency,
+                          rows = row_base + 4, cols = col)
+    }
+  }
+
+  # Conditional formatting on LEV row — data bar
+  lev_row <- results_start + 2
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2:(length(scenarios) + 1), rows = lev_row,
+    type = "dataBar", style = c("#27AE60")
+  )
+
+  # ---- Product breakdown per scenario ----
+  prod_start <- results_start + length(result_labels) + 3
+  openxlsx::writeData(wb, sn, "Product Breakdown at Optimal Rotation",
+                       startCol = 1, startRow = prod_start)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = prod_start,
+                      cols = 1:(length(scenarios) + 1))
+
+  # One row per product, columns = scenarios
+  for (pn_idx in seq_along(yield_tbl$product_names)) {
+    pn <- yield_tbl$product_names[pn_idx]
+    row <- prod_start + pn_idx
+    openxlsx::writeData(wb, sn, paste0(pn, " value ($)"),
+                         startCol = 1, startRow = row)
+    openxlsx::addStyle(wb, sn, s$param_label, rows = row, cols = 1)
+
+    for (sc_idx in seq_along(scenarios)) {
+      sc <- scenarios[[sc_idx]]
+      col <- sc_idx + 1
+
+      scaled_products <- yield_tbl$products
+      for (p in yield_tbl$product_names) {
+        if ("price" %in% names(scaled_products[[p]])) {
+          scaled_products[[p]]$price <- scaled_products[[p]]$price * sc$price_mult
+        }
+      }
+      temp_yt <- tryCatch(
+        yield_table(yield_tbl$ages, scaled_products, yield_tbl$product_units),
+        error = function(e) NULL
+      )
+      if (!is.null(temp_yt)) {
+        opt <- tryCatch(
+          optimal_rotation_mp(temp_yt, sc$regen, sc$annual, sc$rate),
+          error = function(e) NULL
+        )
+        if (!is.null(opt)) {
+          pd <- opt$product_detail
+          val <- pd$value[pd$product == pn]
+          if (length(val) > 0) {
+            openxlsx::writeData(wb, sn, round(val, 2),
+                                 startCol = col, startRow = row)
+            openxlsx::addStyle(wb, sn, s$result_currency,
+                                rows = row, cols = col)
+          }
+        }
+      }
+    }
+  }
+
+  openxlsx::setColWidths(wb, sn, cols = 1:(length(scenarios) + 1),
+                          widths = c(26, rep(16, length(scenarios))))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE,
+                              lockFormattingCells = FALSE)
+}
