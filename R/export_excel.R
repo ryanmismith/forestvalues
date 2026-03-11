@@ -1608,3 +1608,326 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
   openxlsx::protectWorksheet(wb, sn, protect = TRUE,
                               lockFormattingCells = FALSE)
 }
+
+
+# =============================================================================
+# SHEET 9: CHARTS
+# =============================================================================
+.build_charts_sheet <- function(wb, s, yield_tbl, schedule, discount_rate,
+                                 regen_cost, annual_cost, time_horizon,
+                                 has_yield, has_schedule) {
+  sn <- "Charts"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Visualizations", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "Charts are static images generated in R. Re-export workbook to update.",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  current_row <- 4
+  plot_width <- 8
+  plot_height <- 5
+  # Approximate rows per chart (~25 rows for a 5-inch chart at default row height)
+  rows_per_chart <- 26
+
+  # ---- Chart 1: LEV and NPV vs Rotation Age ----
+  if (has_yield) {
+    openxlsx::writeData(wb, sn, "LEV and NPV vs Rotation Age",
+                         startCol = 1, startRow = current_row)
+    openxlsx::addStyle(wb, sn, s$subheader, rows = current_row, cols = 1:6)
+    current_row <- current_row + 1
+
+    # Compute comparison data
+    comp <- tryCatch({
+      rotation_comparison_mp(yield_tbl, regen_cost, annual_cost,
+                              discount_rate)
+    }, error = function(e) NULL)
+
+    if (!is.null(comp) && nrow(comp) > 0) {
+      p1 <- ggplot2::ggplot(comp, ggplot2::aes(x = .data$age)) +
+        ggplot2::geom_line(ggplot2::aes(y = .data$lev, color = "LEV"),
+                            linewidth = 1.2) +
+        ggplot2::geom_line(ggplot2::aes(y = .data$npv, color = "NPV"),
+                            linewidth = 1.2, linetype = "dashed") +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dotted",
+                             color = "gray40") +
+        ggplot2::scale_color_manual(
+          values = c("LEV" = "#27AE60", "NPV" = "#2980B9"),
+          name = "Metric"
+        ) +
+        ggplot2::labs(
+          x = "Rotation Age (years)",
+          y = "Value ($/acre)",
+          title = "Land Expectation Value and NPV by Rotation Age",
+          subtitle = paste0("Discount rate: ", round(discount_rate * 100, 1),
+                             "% | Regen: $", regen_cost,
+                             " | Annual: $", annual_cost)
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold"),
+          legend.position = "bottom"
+        )
+
+      # Mark optimal
+      opt_row <- comp[which.max(comp$lev), ]
+      if (nrow(opt_row) > 0) {
+        p1 <- p1 +
+          ggplot2::geom_vline(xintercept = opt_row$age[1],
+                               linetype = "dashed", color = "#E74C3C",
+                               linewidth = 0.8) +
+          ggplot2::annotate("text", x = opt_row$age[1], y = max(comp$lev) * 0.9,
+                             label = paste0("Optimal: ", opt_row$age[1], " yrs"),
+                             hjust = -0.1, color = "#E74C3C", fontface = "bold")
+      }
+
+      print(p1)
+      openxlsx::insertPlot(wb, sn, width = plot_width, height = plot_height,
+                            startRow = current_row, startCol = 1,
+                            fileType = "png", units = "in", dpi = 150)
+      current_row <- current_row + rows_per_chart
+    }
+  }
+
+  # ---- Chart 2: Product Value Mix by Age ----
+  if (has_yield) {
+    openxlsx::writeData(wb, sn, "Product Value Composition by Age",
+                         startCol = 1, startRow = current_row)
+    openxlsx::addStyle(wb, sn, s$subheader, rows = current_row, cols = 1:6)
+    current_row <- current_row + 1
+
+    plot_data <- yield_tbl$data
+    if (!all(is.na(plot_data$value))) {
+      p2 <- ggplot2::ggplot(plot_data,
+                             ggplot2::aes(x = .data$age, y = .data$value,
+                                           fill = .data$product)) +
+        ggplot2::geom_area(alpha = 0.7, position = "stack") +
+        ggplot2::labs(
+          x = "Stand Age (years)",
+          y = "Value ($/acre)",
+          fill = "Product",
+          title = "Stacked Product Value by Stand Age",
+          subtitle = "Shows how product mix shifts as the stand matures"
+        ) +
+        ggplot2::scale_fill_brewer(palette = "Set2") +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold"),
+          legend.position = "bottom"
+        )
+
+      print(p2)
+      openxlsx::insertPlot(wb, sn, width = plot_width, height = plot_height,
+                            startRow = current_row, startCol = 1,
+                            fileType = "png", units = "in", dpi = 150)
+      current_row <- current_row + rows_per_chart
+    }
+  }
+
+  # ---- Chart 3: Cash Flow Timeline ----
+  if (has_schedule) {
+    openxlsx::writeData(wb, sn, "Cash Flow Timeline",
+                         startCol = 1, startRow = current_row)
+    openxlsx::addStyle(wb, sn, s$subheader, rows = current_row, cols = 1:6)
+    current_row <- current_row + 1
+
+    cf <- tryCatch(
+      cash_flow_schedule(schedule, time_horizon, discount_rate),
+      error = function(e) NULL
+    )
+
+    if (!is.null(cf) && nrow(cf) > 0) {
+      cf$type <- ifelse(cf$cash_flow >= 0, "Revenue", "Cost")
+
+      p3 <- ggplot2::ggplot(cf, ggplot2::aes(x = .data$year,
+                                                y = .data$cash_flow,
+                                                fill = .data$type)) +
+        ggplot2::geom_col(width = 0.8) +
+        ggplot2::geom_line(ggplot2::aes(y = .data$cumulative_npv,
+                                          fill = NULL),
+                            color = "#8E44AD", linewidth = 1) +
+        ggplot2::scale_fill_manual(
+          values = c("Revenue" = "#27AE60", "Cost" = "#E74C3C"),
+          name = "Type"
+        ) +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dotted") +
+        ggplot2::labs(
+          x = "Year",
+          y = "Dollars ($)",
+          title = "Cash Flow Timeline with Cumulative NPV",
+          subtitle = "Bars = nominal cash flows, Line = cumulative NPV"
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+          plot.title = ggplot2::element_text(face = "bold"),
+          legend.position = "bottom"
+        )
+
+      print(p3)
+      openxlsx::insertPlot(wb, sn, width = plot_width, height = plot_height,
+                            startRow = current_row, startCol = 1,
+                            fileType = "png", units = "in", dpi = 150)
+      current_row <- current_row + rows_per_chart
+    }
+  }
+
+  # ---- Chart 4: Sensitivity Tornado ----
+  if (has_yield) {
+    openxlsx::writeData(wb, sn, "Parameter Sensitivity (Tornado)",
+                         startCol = 1, startRow = current_row)
+    openxlsx::addStyle(wb, sn, s$subheader, rows = current_row, cols = 1:6)
+    current_row <- current_row + 1
+
+    # Build tornado data: vary each parameter +/- 25%
+    base_opt <- tryCatch(
+      optimal_rotation_mp(yield_tbl, regen_cost, annual_cost, discount_rate),
+      error = function(e) NULL
+    )
+
+    if (!is.null(base_opt)) {
+      base_lev <- base_opt$value_at_optimum
+
+      tornado_data <- data.frame(
+        parameter = character(),
+        low = numeric(),
+        high = numeric(),
+        stringsAsFactors = FALSE
+      )
+
+      # Discount rate sensitivity
+      for (pct in c(-0.25, 0.25)) {
+        test_rate <- discount_rate * (1 + pct)
+        test_rate <- max(test_rate, 0.005)
+        opt <- tryCatch(
+          optimal_rotation_mp(yield_tbl, regen_cost, annual_cost, test_rate),
+          error = function(e) NULL
+        )
+        if (!is.null(opt)) {
+          if (pct < 0) {
+            tornado_data <- rbind(tornado_data, data.frame(
+              parameter = "Discount Rate",
+              low = NA, high = opt$value_at_optimum,
+              stringsAsFactors = FALSE))
+          } else {
+            tornado_data$low[tornado_data$parameter == "Discount Rate"] <-
+              opt$value_at_optimum
+          }
+        }
+      }
+
+      # Regen cost sensitivity
+      for (pct in c(-0.25, 0.25)) {
+        test_regen <- regen_cost * (1 + pct)
+        opt <- tryCatch(
+          optimal_rotation_mp(yield_tbl, test_regen, annual_cost, discount_rate),
+          error = function(e) NULL
+        )
+        if (!is.null(opt)) {
+          if (pct < 0) {
+            tornado_data <- rbind(tornado_data, data.frame(
+              parameter = "Regen Cost",
+              low = NA, high = opt$value_at_optimum,
+              stringsAsFactors = FALSE))
+          } else {
+            tornado_data$low[tornado_data$parameter == "Regen Cost"] <-
+              opt$value_at_optimum
+          }
+        }
+      }
+
+      # Price sensitivity
+      for (pct in c(-0.25, 0.25)) {
+        scaled_products <- yield_tbl$products
+        for (pn in yield_tbl$product_names) {
+          if ("price" %in% names(scaled_products[[pn]])) {
+            scaled_products[[pn]]$price <- scaled_products[[pn]]$price * (1 + pct)
+          }
+        }
+        temp_yt <- tryCatch(
+          yield_table(yield_tbl$ages, scaled_products, yield_tbl$product_units),
+          error = function(e) NULL
+        )
+        if (!is.null(temp_yt)) {
+          opt <- tryCatch(
+            optimal_rotation_mp(temp_yt, regen_cost, annual_cost, discount_rate),
+            error = function(e) NULL
+          )
+          if (!is.null(opt)) {
+            if (pct < 0) {
+              tornado_data <- rbind(tornado_data, data.frame(
+                parameter = "Stumpage Price",
+                low = opt$value_at_optimum, high = NA,
+                stringsAsFactors = FALSE))
+            } else {
+              tornado_data$high[tornado_data$parameter == "Stumpage Price"] <-
+                opt$value_at_optimum
+            }
+          }
+        }
+      }
+
+      # Annual cost sensitivity
+      if (annual_cost > 0) {
+        for (pct in c(-0.25, 0.25)) {
+          test_annual <- annual_cost * (1 + pct)
+          opt <- tryCatch(
+            optimal_rotation_mp(yield_tbl, regen_cost, test_annual, discount_rate),
+            error = function(e) NULL
+          )
+          if (!is.null(opt)) {
+            if (pct < 0) {
+              tornado_data <- rbind(tornado_data, data.frame(
+                parameter = "Annual Cost",
+                low = NA, high = opt$value_at_optimum,
+                stringsAsFactors = FALSE))
+            } else {
+              tornado_data$low[tornado_data$parameter == "Annual Cost"] <-
+                opt$value_at_optimum
+            }
+          }
+        }
+      }
+
+      if (nrow(tornado_data) > 0) {
+        # Calculate range and sort
+        tornado_data$range <- abs(tornado_data$high - tornado_data$low)
+        tornado_data <- tornado_data[order(tornado_data$range), ]
+        tornado_data$parameter <- factor(tornado_data$parameter,
+                                          levels = tornado_data$parameter)
+
+        p4 <- ggplot2::ggplot(tornado_data) +
+          ggplot2::geom_segment(
+            ggplot2::aes(x = .data$low, xend = .data$high,
+                          y = .data$parameter, yend = .data$parameter),
+            linewidth = 8, color = "#3498DB", alpha = 0.7
+          ) +
+          ggplot2::geom_vline(xintercept = base_lev, linetype = "dashed",
+                               color = "#E74C3C", linewidth = 1) +
+          ggplot2::annotate("text", x = base_lev, y = 0.5,
+                             label = paste0("Base: $", round(base_lev)),
+                             hjust = -0.1, color = "#E74C3C", fontface = "bold") +
+          ggplot2::labs(
+            x = "LEV ($/acre)",
+            y = NULL,
+            title = "Tornado Diagram: LEV Sensitivity to Parameters",
+            subtitle = "Each parameter varied +/- 25% from base case"
+          ) +
+          ggplot2::theme_minimal(base_size = 12) +
+          ggplot2::theme(
+            plot.title = ggplot2::element_text(face = "bold"),
+            axis.text.y = ggplot2::element_text(size = 11, face = "bold")
+          )
+
+        print(p4)
+        openxlsx::insertPlot(wb, sn, width = plot_width, height = plot_height,
+                              startRow = current_row, startCol = 1,
+                              fileType = "png", units = "in", dpi = 150)
+        current_row <- current_row + rows_per_chart
+      }
+    }
+  }
+
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
