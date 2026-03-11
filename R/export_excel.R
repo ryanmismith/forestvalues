@@ -560,3 +560,154 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           widths = c(8, 16, 16, 16, 16, 16, 10, 10))
   openxlsx::protectWorksheet(wb, sn, protect = TRUE)
 }
+
+
+# =============================================================================
+# SHEET 4: CASH FLOW
+# =============================================================================
+.build_cash_flow_sheet <- function(wb, s, schedule, time_horizon, discount_rate) {
+  sn <- "Cash Flow"
+  openxlsx::addWorksheet(wb, sn)
+
+  openxlsx::writeData(wb, sn, "Cash Flow Schedule", startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+
+  # ---- Activities table (editable amounts) ----
+  openxlsx::writeData(wb, sn, "Management Activities (edit amounts in yellow)",
+                       startCol = 1, startRow = 3)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 3, cols = 1:5)
+
+  act_headers <- intersect(c("name", "amount", "year", "frequency", "period_length"),
+                            names(schedule))
+  for (hc in seq_along(act_headers)) {
+    openxlsx::writeData(wb, sn, act_headers[hc],
+                         startCol = hc, startRow = 4)
+    openxlsx::addStyle(wb, sn, s$col_header, rows = 4, cols = hc)
+  }
+  for (i in seq_len(nrow(schedule))) {
+    for (hc in seq_along(act_headers)) {
+      val <- schedule[[act_headers[hc]]][i]
+      openxlsx::writeData(wb, sn, val,
+                           startCol = hc, startRow = 4 + i)
+      if (act_headers[hc] == "amount") {
+        openxlsx::addStyle(wb, sn, s$editable,
+                            rows = 4 + i, cols = hc)
+      }
+    }
+  }
+
+  # ---- Expanded year-by-year cash flows ----
+  cf <- cash_flow_schedule(schedule, time_horizon, discount_rate)
+  cf_start_row <- 4 + nrow(schedule) + 3
+
+  openxlsx::writeData(wb, sn, "Year-by-Year Cash Flows",
+                       startCol = 1, startRow = cf_start_row - 1)
+  openxlsx::addStyle(wb, sn, s$subheader,
+                      rows = cf_start_row - 1, cols = 1:7)
+
+  cf_headers <- c("Year", "Cash Flow", "Cumulative", "Discount Factor",
+                   "Discounted CF", "Cumulative NPV", "% of Total NPV")
+  for (hc in seq_along(cf_headers)) {
+    openxlsx::writeData(wb, sn, cf_headers[hc],
+                         startCol = hc, startRow = cf_start_row)
+    openxlsx::addStyle(wb, sn, s$col_header_blue,
+                        rows = cf_start_row, cols = hc)
+  }
+
+  rate_ref <- "Parameters!$B$8"
+  last_cf_row <- cf_start_row + nrow(cf)
+
+  for (i in seq_len(nrow(cf))) {
+    row <- cf_start_row + i
+
+    # A: Year
+    openxlsx::writeData(wb, sn, cf$year[i], startCol = 1, startRow = row)
+
+    # B: Cash flow (nominal)
+    openxlsx::writeData(wb, sn, cf$cash_flow[i], startCol = 2, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 2)
+
+    # C: Cumulative nominal
+    if (i == 1) {
+      cum_f <- paste0("B", row)
+    } else {
+      cum_f <- paste0("C", row - 1, "+B", row)
+    }
+    openxlsx::writeFormula(wb, sn, cum_f, startCol = 3, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 3)
+
+    # D: Discount factor = 1/(1+r)^t
+    df_f <- paste0("1/(1+", rate_ref, ")^A", row)
+    openxlsx::writeFormula(wb, sn, df_f, startCol = 4, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result, rows = row, cols = 4)
+
+    # E: Discounted = CF * discount factor
+    disc_f <- paste0("B", row, "*D", row)
+    openxlsx::writeFormula(wb, sn, disc_f, startCol = 5, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 5)
+
+    # F: Cumulative NPV
+    if (i == 1) {
+      cnpv_f <- paste0("E", row)
+    } else {
+      cnpv_f <- paste0("F", row - 1, "+E", row)
+    }
+    openxlsx::writeFormula(wb, sn, cnpv_f, startCol = 6, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_currency, rows = row, cols = 6)
+
+    # G: % of total NPV = cumulative / final cumulative
+    pct_f <- paste0("IF(F$", last_cf_row, "=0,0,F", row, "/ABS(F$",
+                     last_cf_row, "))")
+    openxlsx::writeFormula(wb, sn, pct_f, startCol = 7, startRow = row)
+    openxlsx::addStyle(wb, sn, s$result_pct, rows = row, cols = 7)
+  }
+
+  # Conditional formatting: negative cash flows in red, positive in green
+  first_cf <- cf_start_row + 1
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2, rows = first_cf:last_cf_row,
+    rule = "<0", style = s$negative
+  )
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 2, rows = first_cf:last_cf_row,
+    rule = ">0", style = s$positive
+  )
+
+  # Data bars on cumulative NPV
+  openxlsx::conditionalFormatting(
+    wb, sn, cols = 6, rows = first_cf:last_cf_row,
+    type = "dataBar", style = c("#27AE60")
+  )
+
+  # Summary row
+  sum_row <- last_cf_row + 2
+  openxlsx::writeData(wb, sn, "Total NPV:", startCol = 1, startRow = sum_row)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row, cols = 1)
+  openxlsx::writeFormula(wb, sn, paste0("F", last_cf_row),
+                          startCol = 2, startRow = sum_row)
+  openxlsx::addStyle(wb, sn, s$result_currency, rows = sum_row, cols = 2)
+
+  openxlsx::writeData(wb, sn, "Total Undiscounted:",
+                       startCol = 1, startRow = sum_row + 1)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row + 1, cols = 1)
+  openxlsx::writeFormula(wb, sn, paste0("C", last_cf_row),
+                          startCol = 2, startRow = sum_row + 1)
+  openxlsx::addStyle(wb, sn, s$result_currency, rows = sum_row + 1, cols = 2)
+
+  # Payback period: first year where cumulative NPV >= 0
+  openxlsx::writeData(wb, sn, "Payback Period (years):",
+                       startCol = 1, startRow = sum_row + 2)
+  openxlsx::addStyle(wb, sn, s$bold, rows = sum_row + 2, cols = 1)
+  # MATCH finds first cumulative NPV >= 0
+  cum_range <- paste0("F", first_cf, ":F", last_cf_row)
+  age_range <- paste0("A", first_cf, ":A", last_cf_row)
+  payback_f <- paste0("IFERROR(INDEX(", age_range,
+                       ",MATCH(TRUE,", cum_range, ">=0,0)),\"Never\")")
+  openxlsx::writeFormula(wb, sn, payback_f, startCol = 2,
+                          startRow = sum_row + 2)
+
+  openxlsx::setColWidths(wb, sn, cols = 1:7,
+                          widths = c(8, 14, 14, 14, 14, 16, 12))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE,
+                              lockFormattingCells = FALSE)
+}
