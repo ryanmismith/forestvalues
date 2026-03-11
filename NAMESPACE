@@ -22,6 +22,14 @@ export(lev_schedule)
 export(optimal_rotation)
 export(rotation_comparison)
 
+# Multi-product yield tables & rotation
+export(yield_table)
+export(optimal_rotation_mp)
+export(rotation_comparison_mp)
+
+# Excel export
+export(export_excel)
+
 # Stumpage valuation
 export(stumpage_value)
 export(create_price_table)
@@ -52,6 +60,8 @@ S3method(plot, tornado)
 S3method(plot, mc_forest)
 S3method(plot, cash_flow_schedule)
 S3method(plot, rotation_comparison)
+S3method(print, yield_table)
+S3method(plot, yield_table)
 
 # Imports
 importFrom(stats, uniroot, optimize, rnorm, rlnorm, runif, splinefun,
