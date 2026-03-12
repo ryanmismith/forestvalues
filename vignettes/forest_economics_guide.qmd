@@ -2199,7 +2199,125 @@ export_excel(yt, discount_rate = 0.06, file = "no_charts.xlsx",
 **Created when `tax_params` is provided.** U.S. timber tax analysis under
 IRC Section 631 with reforestation incentives.
 
-### Sections {.unnumbered}
+### Why Timber Is Taxed Differently {.unnumbered}
+
+Timber is a unique asset class in the U.S. tax code. Unlike most business
+income, timber sale proceeds can qualify for **long-term capital gains**
+treatment rather than ordinary income rates. This is because Congress has
+recognized since the Revenue Act of 1944 that timber is a long-term capital
+asset — a tree planted today may not be harvested for 25-40 years. Taxing
+the entire harvest as ordinary income in one year would compress decades of
+growth into a single tax year, creating an unfair burden.
+
+Key differences from other assets:
+
+| Feature | Timber | Stocks/Bonds | Real Estate |
+|---------|--------|-------------|-------------|
+| Holding period | 10-80 years | Days to years | Years |
+| Income pattern | Lumpy (harvest years) | Periodic (dividends) | Periodic (rent) |
+| Cost recovery | **Cost depletion** | Purchase basis | Depreciation |
+| Capital gains | Sections 631(a)/(b) | Standard LTCG | Section 1250 |
+| Special incentives | **Section 194** reforestation | None | 1031 exchange |
+
+### Capital Gains vs. Ordinary Income for Timber {.unnumbered}
+
+Understanding when timber income is capital gains vs. ordinary income is
+the single most important tax question for forest landowners.
+
+**Capital gains treatment (lower rate):**
+
+- Gain from sale of standing timber held > 1 year, with a Section 631
+  election
+- Section 1231 gain: if net Section 1231 gains exceed losses, all are
+  treated as long-term capital gains
+- Current federal LTCG rates: 0%, 15%, or 20% depending on taxable income
+  (most landowners pay 15%)
+
+**Ordinary income treatment (higher rate):**
+
+- Timber sold without a Section 631 election
+- Short-term gains (timber held ≤ 1 year — rare for planted timber)
+- Income from timber cut and used in the taxpayer's own business (without
+  631(a) election)
+- Logging services income (the logging contractor's wages are ordinary)
+- Christmas tree sales, nursery stock, and other "crop" timber
+
+**The "Section 1231 netting" rule:** If total Section 1231 gains exceed
+losses, all gains are long-term capital gains. But if losses exceed gains,
+all are ordinary losses (fully deductible). This asymmetry is favorable
+to the taxpayer. However, the "Section 1231(c) recapture" rule requires
+that net Section 1231 gains be treated as ordinary income to the extent
+of unrecaptured Section 1231 losses from the prior 5 years.
+
+### Acquisition Context: Establishing Basis {.unnumbered}
+
+When you **acquire** timberland (purchase, inheritance, or gift), you must
+allocate the total cost among separate accounts:
+
+1. **Land account** — non-depletable (recovered only on sale)
+2. **Timber account** — depleted as timber is harvested
+3. **Improvements account** — roads, bridges (depreciated over useful life)
+4. **Pre-merchantable timber** — young timber not yet harvestable (transferred
+   to timber account when merchantable)
+
+**Purchase:** Basis = purchase price, allocated by fair market value of each
+component. A timber cruise at acquisition is essential.
+
+**Inheritance:** Basis = fair market value on date of death (or alternate
+valuation date). This "stepped-up basis" can significantly reduce future
+tax liability.
+
+**Gift:** Basis = donor's adjusted basis (carryover basis) for gains.
+For losses, basis = lesser of donor's basis or FMV at time of gift.
+
+### Divestment Context: Tax Planning for Sale {.unnumbered}
+
+When **divesting** timberland, tax considerations include:
+
+- **Timber vs. land:** Timber gain qualifies for capital gains (with 631
+  election); land gain is standard Section 1231/capital gain if held > 1 year
+- **Installment sales:** Spreading gain over multiple tax years to stay in
+  lower brackets (Section 453)
+- **Like-kind exchange:** Section 1031 applies to land but **not** to
+  standing timber (timber is considered "property held primarily for sale")
+- **Charitable donations:** Conservation easements can provide significant
+  deductions while retaining timber rights
+- **State taxes:** Vary significantly — some states have severance taxes,
+  yield taxes, or specific timber excise taxes in addition to income tax
+
+### Uneven-Aged Management: Special Tax Considerations {.unnumbered}
+
+Managing forests on an uneven-aged (selection) basis creates unique tax
+situations:
+
+**Periodic partial harvests:**
+
+- Each cutting cycle (typically 10-20 years) generates income that can
+  qualify for capital gains treatment
+- Cost depletion must be tracked carefully — the depletion rate changes
+  after each harvest because the remaining basis and volume change
+- Use `depletion_schedule()` to track basis across multiple harvests
+
+**Continuous forest cover:**
+
+- No clear "rotation" — the forest is always producing; no single
+  establishment cost to recover
+- Annual costs (property tax, management fees) are deductible as
+  ordinary business expenses (Schedule C or Form T)
+- Consider whether management is a "trade or business" (material
+  participation test) vs. "investment" (passive activity rules)
+
+**Mixed-age inventory:**
+
+- Separate timber accounts may be needed for different age classes
+  or species groups
+- When acquiring a mixed-age property, allocate basis to merchantable
+  vs. pre-merchantable timber (typically by volume x price)
+- Example: a 500-acre northern hardwood tract with timber worth
+  $850/acre merchantable and $200/acre pre-merchantable would have
+  separate accounts
+
+### Sheet Sections {.unnumbered}
 
 1. **Tax Parameters** (editable yellow cells) — gross revenue, cost basis,
    holding period, marginal rate, capital gains rate, state rate,
@@ -2215,19 +2333,73 @@ IRC Section 631 with reforestation incentives.
    advantages
 5. **Notes** — disclaimer and references (timbertax.org, GTR-SRS-112)
 
+### Section 631(a) vs. 631(b) — When to Use Each {.unnumbered}
+
+| Criterion | 631(a) | 631(b) |
+|-----------|--------|--------|
+| **Who cuts** | Owner or contractor cuts for owner | Buyer cuts (pay-as-cut) |
+| **Sale type** | Owner sells logs after cutting | Standing timber sale |
+| **Election** | Must elect on tax return; can revoke | Automatic for qualifying sales |
+| **FMV timing** | First day of tax year | Date of sale/contract |
+| **Best for** | Owner-operators, value-added operations | Lump-sum stumpage sales |
+| **Complexity** | Higher (need FMV appraisal on Jan 1) | Lower (sale price = FMV) |
+
+**Practical guidance:** For most private landowners who sell stumpage to a
+logger, **631(b) is the simplest and most common choice**. Section 631(a)
+is more common for integrated forest products companies that cut their own
+timber.
+
+### Cost Depletion — How It Works {.unnumbered}
+
+Cost depletion is the IRS-approved method for recovering your timber
+investment. It works like "units of production" depreciation:
+
+$$\text{Depletion rate} = \frac{\text{Adjusted basis remaining}}{\text{Volume remaining}}$$
+
+$$\text{Depletion this harvest} = \text{Rate} \times \text{Volume cut}$$
+
+**Example:** You purchased a 500-acre tract with 10,000 MBF of timber.
+Your timber basis is $600,000.
+
+- Harvest 1 (2,500 MBF): Rate = $600,000 / 10,000 = $60/MBF.
+  Depletion = 2,500 × $60 = **$150,000** tax-free.
+- Harvest 2 (3,000 MBF): Rate = $450,000 / 7,500 = $60/MBF.
+  Depletion = 3,000 × $60 = **$180,000** tax-free.
+
+This is tracked automatically by `depletion_schedule()`.
+
+### Section 194 — Reforestation Tax Incentive {.unnumbered}
+
+IRC Section 194 encourages reforestation by providing two benefits:
+
+1. **Direct deduction:** Up to $10,000 per year of qualifying
+   reforestation expenses deducted immediately
+2. **84-month amortization:** Amounts over $10,000 are amortized ratably
+   over 84 months (7 years), using a half-year convention
+
+**Qualifying expenses:** Site preparation, seed, seedlings, planting labor,
+direct supervision of planting crews. Does **not** include land clearing
+for non-timber purposes, expenses already deducted under other provisions,
+or costs of timber stand improvement (TSI) — TSI is a separate deduction.
+
+**Half-year convention:** The first and last years get half a year's
+amortization (1/14 of excess), while years 2-7 get a full year (1/7).
+
 ### Data Required {.unnumbered}
 
 Provide `tax_params` as a named list:
 
 ```{r}
 #| eval: false
-tax_params = list(
-  gross_revenue = 45000,       # timber sale proceeds ($)
-  cost_basis = 8000,           # adjusted basis ($)
-  holding_period = 25,         # years held
-  marginal_rate = 0.24,        # ordinary income bracket
-  cap_gains_rate = 0.15,       # LTCG rate
-  state_rate = 0.05,           # state income tax
+# Using the timber_sales() dataset
+sales <- timber_sales()
+tax_params <- list(
+  gross_revenue = sales$gross_revenue[1],  # $45,000
+  cost_basis = sales$cost_basis[1],        # $8,000
+  holding_period = sales$holding_period_years[1],  # 25 years
+  marginal_rate = 0.24,        # 24% ordinary income bracket
+  cap_gains_rate = 0.15,       # 15% LTCG rate
+  state_rate = 0.05,           # 5% state income tax
   reforestation_cost = 45000   # Section 194 expenses ($)
 )
 ```
@@ -2235,9 +2407,28 @@ tax_params = list(
 ### Use Cases {.unnumbered}
 
 - **Tax planning before harvest** — compare methods to choose best election
-- **Client presentation** — show savings from Section 631 vs. ordinary
+- **Client presentation** — show landowner savings from Section 631
 - **Reforestation timing** — see when tax savings from Section 194 arrive
-- **Estate planning** — project tax impact of timber income
+- **Estate planning** — project tax impact of timber income for estate
+  administrators
+- **Acquisition due diligence** — model after-tax returns for a potential
+  timberland purchase
+- **Divestment analysis** — compute net proceeds after federal and state
+  taxes under different sale structures
+- **Uneven-aged management** — track depletion across multiple partial
+  harvests over decades
+
+### References {.unnumbered}
+
+- Siegel, W.C., Haney, H.L. Jr., & Greene, J.L. (2009). *Federal Income Tax
+  on Timber: A Key to Your Most Frequently Asked Questions*. USDA Forest
+  Service GTR-SRS-112. [Free download from USFS Treesearch]
+- Haney, H.L. Jr., Hoover, W.L., Siegel, W.C., & Greene, J.L. (2001).
+  *Forest Landowners' Guide to the Federal Income Tax*. USDA Forest Service
+  Agriculture Handbook 718.
+- IRS Publication 535 (Business Expenses), Chapter 7 — Reforestation Costs
+- National Timber Tax Website: [timbertax.org](https://timbertax.org)
+- Hoover, W.L. (2017). *Timber Tax Management for CPAs*. Purdue Extension.
 
 ---
 
@@ -2474,3 +2665,512 @@ Parameters (source of truth)
 | Green → Red color scale | High value → Low value |
 | Blue → Orange color scale | Short rotation → Long rotation |
 | Data bars | Visual magnitude comparison |
+
+---
+
+# Appendix D: Complete Workflows — From Data to Export {#sec-appendix-workflows .unnumbered}
+
+Each workflow below starts from scratch (raw data) and walks through every
+step to a finished analysis, using the package's example datasets. These
+are designed as self-contained tutorials that demonstrate how function
+groups work together.
+
+## D.1 Plantation Investment Analysis {.unnumbered}
+
+**Goal:** Evaluate whether a loblolly pine plantation is a good investment.
+**Functions used:** `pine_yields()`, `pine_schedule()`, `yield_table`,
+`optimal_rotation_mp()`, `npv_schedule()`, `irr()`, `lev()`, `cash_flow_schedule()`,
+`sensitivity_1way()`, `export_excel()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Load example data ----
+yt <- pine_yields()         # yield table: sawlog + pulpwood, ages 10-50
+sched <- pine_schedule()    # management schedule: plant, thin, harvest
+
+# ---- Step 2: Find optimal rotation ----
+opt <- optimal_rotation_mp(yt, regen_cost = 750, annual_cost = 17,
+                            discount_rate = 0.06)
+opt$optimal_age       # e.g., 35 years
+opt$value_at_optimum  # maximum LEV ($/acre)
+
+# ---- Step 3: Compute key financial metrics ----
+# NPV of the full management plan
+sched_npv <- npv_schedule(sched, discount_rate = 0.06, time_horizon = 35)
+sched_npv  # positive = profitable investment
+
+# IRR: what rate of return does this earn?
+cf <- cash_flow_schedule(sched, time_horizon = 35)
+plantation_irr <- irr(cf$annual_cash_flow$net_flow, cf$annual_cash_flow$year)
+plantation_irr  # e.g., ~8%
+
+# LEV: what is bare land worth under perpetual pine management?
+harvest_rev <- opt$revenue_at_optimum
+lev_val <- lev(harvest_rev - 750, rotation_age = opt$optimal_age,
+                discount_rate = 0.06)
+lev_val  # $/acre
+
+# ---- Step 4: Sensitivity analysis ----
+# How sensitive is the LEV to discount rate?
+sens <- sensitivity_1way(
+  param_values = seq(0.03, 0.10, by = 0.005),
+  eval_fn = function(r) {
+    o <- optimal_rotation_mp(yt, 750, 17, r)
+    lev(o$revenue_at_optimum - 750, o$optimal_age, r)
+  }
+)
+plot(sens)
+
+# ---- Step 5: Export everything to Excel ----
+export_excel(
+  yield_tbl = yt,
+  schedule = sched,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  time_horizon = 35,
+  file = "pine_plantation_analysis.xlsx",
+  title = "Loblolly Pine Investment Analysis",
+  author = "Your Name"
+)
+```
+
+**What you get:** A 10-sheet Excel workbook where changing the discount rate
+in the Parameters sheet automatically recalculates NPV, LEV, rotation
+analysis, and cash flows.
+
+
+## D.2 Timberland Appraisal — Full Three-Approach Valuation {.unnumbered}
+
+**Goal:** Appraise a 500-acre timberland property using all three standard
+approaches (income, cost/liquidation, sales comparison).
+**Functions used:** `pine_yields()`, `rate_components()`, `comparable_sales_data()`,
+`discount_rate_buildup()`, `timberland_value()`, `liquidation_value()`,
+`comparable_sale()`, `tract_aggregate()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Establish the discount rate ----
+rc <- rate_components()
+dr <- discount_rate_buildup(
+  risk_free = rc$typical_mid[1],        # 4.0%
+  inflation_premium = rc$typical_mid[2], # 2.5%
+  illiquidity_premium = rc$typical_mid[3], # 1.0%
+  management_risk = rc$typical_mid[4],  # 0.5%
+  market_risk = rc$typical_mid[5],      # 1.0%
+  property_specific = 0.005             # average property risk
+)
+r <- dr$real_rate  # real rate for discounting real cash flows
+
+# ---- Step 2: Income approach ----
+yt <- pine_yields()
+
+# Stand A: 200 acres of 25-year-old pine
+val_a <- timberland_value(yt, discount_rate = r, regen_cost = 750,
+                           annual_cost = 17, current_age = 25,
+                           method = "income")
+val_a$total_value * 200  # total value for Stand A
+
+# Stand B: 300 acres of 10-year-old pine
+val_b <- timberland_value(yt, discount_rate = r, regen_cost = 750,
+                           annual_cost = 17, current_age = 10,
+                           method = "income")
+val_b$total_value * 300  # total value for Stand B
+
+# Aggregate the two stands
+total <- tract_aggregate(
+  stand_a = val_a, stand_b = val_b,
+  acres = c(stand_a = 200, stand_b = 300)
+)
+cat("Income approach total:", total$total_value, "\n")
+cat("Income approach $/acre:", total$per_acre_value, "\n")
+
+# ---- Step 3: Cost (liquidation) approach ----
+# What is the property worth if you harvest everything today?
+liq_a <- liquidation_value(yt, current_age = 25,
+                            logging_cost = 150, sale_cost_pct = 0.05)
+liq_b <- liquidation_value(yt, current_age = 10,
+                            logging_cost = 180, sale_cost_pct = 0.05)
+liq_total <- liq_a$net_value * 200 + liq_b$net_value * 300
+cat("Liquidation approach:", liq_total, "\n")
+
+# ---- Step 4: Sales comparison approach ----
+comps <- comparable_sales_data()
+
+# Adjust each comparable for the subject property
+adj_1 <- comparable_sale(comps$price_per_acre[1],
+  adjustments = list(timber = 200, access = 0, location = -50, time = 75))
+adj_2 <- comparable_sale(comps$price_per_acre[2],
+  adjustments = list(timber = 500, access = 200, location = 100, time = 100))
+adj_3 <- comparable_sale(comps$price_per_acre[3],
+  adjustments = list(timber = -100, access = -75, location = -100, time = 50))
+
+# Average of adjusted comparables
+comp_value <- mean(c(adj_1$adjusted_price, adj_2$adjusted_price,
+                      adj_3$adjusted_price)) * 500
+cat("Sales comparison approach:", comp_value, "\n")
+
+# ---- Step 5: Reconciliation ----
+# Weight the three approaches (typical: income 50%, sales 30%, cost 20%)
+reconciled <- total$total_value * 0.50 +
+              comp_value * 0.30 +
+              liq_total * 0.20
+cat("Reconciled value:", reconciled, "\n")
+cat("Reconciled $/acre:", reconciled / 500, "\n")
+```
+
+
+## D.3 Timber Tax Planning — Sale to Export {.unnumbered}
+
+**Goal:** Plan the tax treatment for a timber sale, track depletion across
+multiple harvests, compute after-tax returns, and export to Excel.
+**Functions used:** `timber_sales()`, `pine_harvests()`, `timber_tax()`,
+`tax_comparison()`, `depletion_schedule()`, `after_tax_npv()`,
+`reforestation_deduction()`, `export_excel()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Compare tax methods for a single sale ----
+sales <- timber_sales()
+sale <- sales[1, ]  # $45,000 loblolly pine sale, 25-year hold
+
+tc <- tax_comparison(
+  gross_revenue = sale$gross_revenue,
+  cost_basis = sale$cost_basis,
+  holding_period_years = sale$holding_period_years,
+  marginal_rate = 0.24,
+  cap_gains_rate = 0.15,
+  state_rate = 0.05
+)
+tc$recommendation       # which method saves the most
+tc$savings_vs_ordinary  # dollars saved
+tc$methods              # full comparison table
+
+# ---- Step 2: Track depletion across multiple harvests ----
+ph <- pine_harvests()
+ds <- depletion_schedule(
+  initial_basis = ph$initial_basis,   # $800,000
+  initial_volume = ph$initial_volume,  # 13,000 MBF
+  harvests = ph$harvests
+)
+ds$schedule       # per-harvest depletion rate and amount
+ds$remaining_basis  # basis left after all harvests
+
+# ---- Step 3: Compute after-tax NPV of a plantation investment ----
+sched <- pine_schedule()
+# Convert schedule to cash flows and times
+cf <- c(sched$amount[sched$frequency == "once"])
+times <- c(sched$year[sched$frequency == "once"])
+
+result <- after_tax_npv(
+  cash_flows = cf, times = times, discount_rate = 0.06,
+  cost_basis = 750,       # planting cost is the basis
+  tax_method = "631b",
+  marginal_rate = 0.24,
+  cap_gains_rate = 0.15,
+  state_rate = 0.05,
+  holding_period = 35
+)
+cat("Pre-tax NPV:", result$npv_pretax, "\n")
+cat("After-tax NPV:", result$npv_after_tax, "\n")
+cat("Tax impact:", result$tax_impact, "\n")
+
+# ---- Step 4: Model reforestation tax incentive ----
+rd <- reforestation_deduction(total_cost = 45000, tax_year = 2025,
+                               marginal_rate = 0.24)
+rd$year_1_deduction         # $10,000 immediate
+rd$total_tax_savings        # total savings over 8 years
+rd$effective_subsidy_rate   # ~24%
+rd$amortization_schedule    # year-by-year deduction schedule
+
+# ---- Step 5: Export with tax analysis ----
+yt <- pine_yields()
+export_excel(
+  yield_tbl = yt,
+  schedule = sched,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  time_horizon = 35,
+  file = "pine_with_tax.xlsx",
+  title = "Pine Plantation — Tax-Integrated Analysis",
+  tax_params = list(
+    gross_revenue = sale$gross_revenue,
+    cost_basis = sale$cost_basis,
+    holding_period = sale$holding_period_years,
+    marginal_rate = 0.24,
+    cap_gains_rate = 0.15,
+    state_rate = 0.05,
+    reforestation_cost = 45000
+  )
+)
+```
+
+
+## D.4 Hold vs. Sell — Divestment Decision {.unnumbered}
+
+**Goal:** A TIMO has received an offer on a mid-rotation tract. Should they
+sell now or hold to maturity?
+**Functions used:** `pine_yields()`, `hold_vs_sell()`, `timberland_value()`,
+`monte_carlo()`, `risk_metrics()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Deterministic analysis ----
+yt <- pine_yields()
+
+hs <- hold_vs_sell(
+  yt,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  current_age = 25,
+  current_offer = 3500   # $/acre offered by buyer
+)
+hs$recommendation    # "hold" or "sell"
+hs$hold_value        # $/acre if held to optimal harvest
+hs$sell_value        # $/acre if sold now (the offer)
+hs$advantage         # $ difference
+hs$breakeven_price   # offer price that makes us indifferent
+
+# ---- Step 2: Risk analysis — is holding risky? ----
+# Monte Carlo: what if prices are uncertain?
+mc <- monte_carlo(
+  n = 5000,
+  eval_fn = function() {
+    # Simulate a random price multiplier
+    price_mult <- rlnorm(1, meanlog = 0, sdlog = 0.25)
+    # Adjust yield table prices
+    yt_sim <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23),
+          price = 254 * price_mult),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27),
+          price = 9 * price_mult)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    tv <- timberland_value(yt_sim, 0.06, 750, 17, current_age = 25)
+    tv$total_value
+  }
+)
+
+# Risk metrics: probability of hold value falling below offer
+rm <- risk_metrics(mc, threshold = 3500)
+cat("P(hold < offer):", rm$prob_below, "\n")
+cat("Expected hold value:", rm$mean, "\n")
+cat("5th percentile:", rm$VaR_95, "\n")
+```
+
+
+## D.5 Stochastic Timber Pricing — Price Risk Analysis {.unnumbered}
+
+**Goal:** Model timber price uncertainty and its impact on investment returns.
+**Functions used:** `stochastic_prices()`, `simulate_yield()`, `monte_carlo()`,
+`risk_metrics()`, `sensitivity_2way()`, `tornado_plot()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Generate stochastic price paths ----
+# Geometric Brownian Motion for sawlog prices
+sawlog_paths <- stochastic_prices(
+  n_paths = 200, n_years = 40,
+  initial_price = 254,
+  drift = 0.02,       # 2% real price growth
+  volatility = 0.15,  # 15% annual volatility
+  model = "gbm"
+)
+
+# Mean-reverting (OU) model for pulpwood
+pulp_paths <- stochastic_prices(
+  n_paths = 200, n_years = 40,
+  initial_price = 9,
+  drift = 0.01,
+  volatility = 0.20,
+  model = "ou",
+  mean_reversion = 0.15,
+  long_run_mean = 10
+)
+
+# ---- Step 2: Monte Carlo LEV with price uncertainty ----
+mc_lev <- monte_carlo(
+  n = 2000,
+  eval_fn = function() {
+    sp <- 254 * exp(rnorm(1, 0.02 * 35, 0.15 * sqrt(35)))
+    pp <- 9 * exp(rnorm(1, 0.01 * 35, 0.20 * sqrt(35)))
+    yt_sim <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23), price = sp),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27), price = pp)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    opt <- optimal_rotation_mp(yt_sim, 750, 17, 0.06)
+    lev(opt$revenue_at_optimum - 750, opt$optimal_age, 0.06)
+  }
+)
+plot(mc_lev)
+rm <- risk_metrics(mc_lev, threshold = 0)
+cat("P(LEV < 0):", rm$prob_below, "\n")
+cat("Mean LEV:", rm$mean, "\n")
+
+# ---- Step 3: Two-way sensitivity: rate x price ----
+sens2 <- sensitivity_2way(
+  param1_values = seq(0.03, 0.10, by = 0.01),
+  param2_values = seq(150, 400, by = 25),
+  eval_fn = function(r, p) {
+    yt_s <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23), price = p),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27), price = 9)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    opt <- optimal_rotation_mp(yt_s, 750, 17, r)
+    lev(opt$revenue_at_optimum - 750, opt$optimal_age, r)
+  }
+)
+plot(sens2)
+
+# ---- Step 4: Tornado diagram — which factors matter most? ----
+tp <- tornado_plot(
+  base_value = lev(8500 - 750, 35, 0.06),
+  params = list(
+    "Discount rate" = list(low = 0.04, high = 0.08,
+      fn = function(r) lev(8500 - 750, 35, r)),
+    "Sawlog price" = list(low = 180, high = 330,
+      fn = function(p) lev(p * 23 + 9 * 27 - 750, 35, 0.06)),
+    "Regen cost" = list(low = 500, high = 1000,
+      fn = function(c) lev(8500 - c, 35, 0.06)),
+    "Rotation age" = list(low = 25, high = 45,
+      fn = function(a) lev(8500 - 750, a, 0.06))
+  )
+)
+plot(tp)
+```
+
+
+## D.6 Northern Hardwood Selection — Uneven-Aged Management {.unnumbered}
+
+**Goal:** Analyze a northern hardwood stand managed on a selection system
+with periodic partial harvests and multi-decade tax tracking.
+**Functions used:** `hardwood_yields()`, `rotation_comparison_mp()`,
+`depletion_schedule()`, `timber_tax()`, `after_tax_npv()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Evaluate cutting cycle options ----
+yt <- hardwood_yields()
+
+# Compare different cutting cycles (treated as "rotation ages")
+rc <- rotation_comparison_mp(yt, regen_cost = 500, annual_cost = 25,
+                              discount_rate = 0.04)
+rc  # LEV, NPV at each age
+
+# ---- Step 2: Model periodic harvests for tax purposes ----
+# Assume 500 acres, 8,000 MBF total, basis = $400,000
+# Selection harvests every 15-20 years
+harvests <- data.frame(
+  year = c(2010, 2025, 2040, 2055),
+  volume = c(1500, 2000, 2500, 2000),
+  revenue = c(450000, 680000, 900000, 750000)
+)
+
+ds <- depletion_schedule(
+  initial_basis = 400000,
+  initial_volume = 8000,
+  harvests = harvests
+)
+ds$schedule  # depletion rate changes each harvest
+
+# ---- Step 3: Tax analysis for each harvest ----
+for (i in seq_len(nrow(ds$schedule))) {
+  cat("\n--- Harvest", i, "(", ds$schedule$year[i], ") ---\n")
+  tt <- timber_tax(
+    gross_revenue = ds$schedule$revenue[i],
+    cost_basis = ds$schedule$depletion_amount[i],
+    holding_period_years = 20,
+    method = "631b",
+    marginal_tax_rate = 0.24,
+    capital_gains_rate = 0.15
+  )
+  cat("Revenue:", ds$schedule$revenue[i], "\n")
+  cat("Depletion:", ds$schedule$depletion_amount[i], "\n")
+  cat("Tax:", tt$tax_liability, "\n")
+  cat("Net:", tt$net_after_tax, "\n")
+}
+
+# ---- Step 4: After-tax NPV of 45-year management plan ----
+# Costs: $25/acre/year management + $500/acre regen after each harvest
+cf <- c(-500, rep(-25 * 500, 14), 450000 - 500, rep(-25 * 500, 14),
+        680000 - 500, rep(-25 * 500, 14), 900000)
+times <- 0:44
+
+result <- after_tax_npv(cf, times, discount_rate = 0.04,
+                         cost_basis = 400000, tax_method = "631b")
+cat("After-tax NPV:", result$npv_after_tax, "\n")
+```
+
+
+## D.7 Quick Reference — Minimal Examples {.unnumbered}
+
+One-liner examples showing each major function group.
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Time value of money ----
+discount(100000, 0.06, 30)              # PV of $100K in 30 years
+compound(750, 0.06, 35)                 # FV of $750 planting cost
+
+# ---- NPV ----
+npv(c(-750, 8500), c(0, 35), 0.06)     # simple plantation NPV
+npv_schedule(pine_schedule(), 0.06, 35) # from management schedule
+
+# ---- IRR ----
+irr(c(-750, 8500), c(0, 35))           # plantation rate of return
+mirr(c(-750, 8500), c(0, 35), 0.06, 0.04)  # modified IRR
+
+# ---- LEV / Faustmann ----
+lev(8500 - 750, 35, 0.06)              # bare land value
+lev_schedule(pine_schedule(), 0.06, 35) # from management schedule
+
+# ---- Rotation ----
+yt <- pine_yields()
+optimal_rotation_mp(yt, 750, 50, 0.06) # optimal harvest age
+
+# ---- Appraisal ----
+timberland_value(yt, 0.06, 750, 50, current_age = 25)
+hold_vs_sell(yt, 0.06, 750, 50, current_age = 25, current_offer = 3000)
+
+# ---- Tax ----
+timber_tax(45000, 8000, holding_period_years = 25, method = "631b")
+tax_comparison(45000, 8000, 25)
+reforestation_deduction(45000, 2025)
+
+# ---- Excel export ----
+export_excel(yt, pine_schedule(), 0.06, 750, 50, 35,
+             file = "quick.xlsx", include_charts = FALSE)
+```
