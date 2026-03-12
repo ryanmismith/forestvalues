@@ -44,6 +44,17 @@
 #'   Default generates 11 steps from 50\% to 150\% of base price.
 #' @param include_charts Logical. Whether to embed ggplot2 charts. Default TRUE.
 #'   Requires an active graphics device.
+#' @param tax_params Named list or NULL. Tax parameters for the Tax Analysis
+#'   sheet. If provided, a Tax Analysis sheet is added. Elements:
+#'   \describe{
+#'     \item{gross_revenue}{Gross timber sale revenue ($)}
+#'     \item{cost_basis}{Adjusted cost basis ($)}
+#'     \item{holding_period}{Years timber held (for capital gains)}
+#'     \item{marginal_rate}{Ordinary income tax rate (default 0.24)}
+#'     \item{cap_gains_rate}{Capital gains rate (default 0.15)}
+#'     \item{state_rate}{State tax rate (default 0)}
+#'     \item{reforestation_cost}{Section 194 reforestation expense (default 0)}
+#'   }
 #'
 #' @return Invisibly returns the file path. The workbook is written to disk.
 #'
@@ -108,7 +119,8 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           author = "",
                           sensitivity_rates = seq(0.02, 0.12, by = 0.01),
                           sensitivity_prices = NULL,
-                          include_charts = TRUE) {
+                          include_charts = TRUE,
+                          tax_params = NULL) {
 
   if (!requireNamespace("openxlsx", quietly = TRUE)) {
     stop("Package 'openxlsx' is required for Excel export. ",
@@ -177,10 +189,16 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
                          has_yield, has_schedule)
   }
 
-  # ===== 10. SUMMARY SHEET =====
+  # ===== 10. TAX ANALYSIS SHEET =====
+  has_tax <- !is.null(tax_params) && is.list(tax_params)
+  if (has_tax) {
+    .build_tax_sheet(wb, s, tax_params)
+  }
+
+  # ===== 11. SUMMARY SHEET =====
   .build_summary_sheet(wb, s, title, author, yield_tbl, schedule,
                         discount_rate, regen_cost, annual_cost, time_horizon,
-                        has_yield, has_schedule)
+                        has_yield, has_schedule, has_tax)
 
   # ===== SAVE =====
   openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
@@ -1934,11 +1952,286 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
 
 
 # =============================================================================
-# SHEET 10: SUMMARY
+# SHEET 10: TAX ANALYSIS
+# =============================================================================
+.build_tax_sheet <- function(wb, s, tax_params) {
+  sn <- "Tax Analysis"
+  openxlsx::addWorksheet(wb, sn)
+
+  # Resolve tax params with defaults
+  .d <- function(x, default) if (is.null(x)) default else x
+  gross_revenue <- .d(tax_params$gross_revenue, 0)
+  cost_basis <- .d(tax_params$cost_basis, 0)
+  holding_period <- .d(tax_params$holding_period, 10)
+  marginal_rate <- .d(tax_params$marginal_rate, 0.24)
+  cap_gains_rate <- .d(tax_params$cap_gains_rate, 0.15)
+  state_rate <- .d(tax_params$state_rate, 0)
+  reforestation_cost <- .d(tax_params$reforestation_cost, 0)
+
+  # ---- Header ----
+  openxlsx::writeData(wb, sn, "Timber Tax Analysis",
+                       startCol = 1, startRow = 1)
+  openxlsx::addStyle(wb, sn, s$header, rows = 1, cols = 1)
+  openxlsx::writeData(wb, sn,
+    "U.S. Federal Timber Tax — IRC Section 631",
+    startCol = 1, startRow = 2)
+  openxlsx::addStyle(wb, sn, s$note, rows = 2, cols = 1)
+
+  # ---- SECTION 1: Editable Tax Parameters ----
+  openxlsx::writeData(wb, sn, "Tax Parameters (edit yellow cells)",
+                       startCol = 1, startRow = 4)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = 4, cols = 1:3)
+
+  tax_labels <- c("Gross Timber Revenue ($)",
+                   "Cost Basis ($)",
+                   "Holding Period (years)",
+                   "Marginal Tax Rate",
+                   "Capital Gains Rate",
+                   "State Tax Rate",
+                   "Reforestation Cost ($)")
+  tax_values <- c(gross_revenue, cost_basis, holding_period,
+                   marginal_rate, cap_gains_rate, state_rate,
+                   reforestation_cost)
+  tax_rows <- 5:11
+
+  for (i in seq_along(tax_labels)) {
+    openxlsx::writeData(wb, sn, tax_labels[i],
+                         startCol = 1, startRow = tax_rows[i])
+    openxlsx::addStyle(wb, sn, s$param_label, rows = tax_rows[i], cols = 1)
+    openxlsx::writeData(wb, sn, tax_values[i],
+                         startCol = 2, startRow = tax_rows[i])
+  }
+  # Styles: currency for $, pct for rates, int for years
+  openxlsx::addStyle(wb, sn, s$editable, rows = 5, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable, rows = 6, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable_int, rows = 7, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable_pct, rows = 8, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable_pct, rows = 9, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable_pct, rows = 10, cols = 2)
+  openxlsx::addStyle(wb, sn, s$editable, rows = 11, cols = 2)
+
+  # ---- SECTION 2: Tax Method Comparison ----
+  # Compute using our R functions for all 3 methods
+  tc <- tryCatch(
+    tax_comparison(gross_revenue, cost_basis, holding_period,
+                    marginal_rate, cap_gains_rate, state_rate),
+    error = function(e) NULL
+  )
+
+  comp_row <- 13
+  openxlsx::writeData(wb, sn, "Section 631 Tax Method Comparison",
+                       startCol = 1, startRow = comp_row)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = comp_row, cols = 1:5)
+  comp_row <- comp_row + 1
+
+  if (!is.null(tc)) {
+    # Headers
+    comp_headers <- c("Item", "Section 631(a)", "Section 631(b)", "Ordinary Income")
+    for (hc in seq_along(comp_headers)) {
+      openxlsx::writeData(wb, sn, comp_headers[hc],
+                           startCol = hc, startRow = comp_row)
+      col_style <- if (hc <= 2) s$col_header else if (hc == 3) s$col_header_blue else s$col_header_orange
+      openxlsx::addStyle(wb, sn, col_style, rows = comp_row, cols = hc)
+    }
+    comp_row <- comp_row + 1
+
+    # Row labels and values
+    row_items <- c("Gross Revenue", "Cost Basis Depletion", "Taxable Gain",
+                    "Capital Gain Portion", "Ordinary Income Portion",
+                    "Tax Liability", "Net After Tax", "Effective Tax Rate")
+
+    for (ri in seq_along(row_items)) {
+      openxlsx::writeData(wb, sn, row_items[ri],
+                           startCol = 1, startRow = comp_row)
+      openxlsx::addStyle(wb, sn, s$param_label, rows = comp_row, cols = 1)
+
+      for (mi in 1:3) {
+        val <- switch(row_items[ri],
+          "Gross Revenue" = tc$methods$gross_revenue[mi],
+          "Cost Basis Depletion" = tc$methods$depletion[mi],
+          "Taxable Gain" = tc$methods$taxable_gain[mi],
+          "Capital Gain Portion" = tc$methods$capital_gain[mi],
+          "Ordinary Income Portion" = tc$methods$ordinary_income[mi],
+          "Tax Liability" = tc$methods$tax_liability[mi],
+          "Net After Tax" = tc$methods$net_after_tax[mi],
+          "Effective Tax Rate" = tc$methods$effective_rate[mi]
+        )
+        openxlsx::writeData(wb, sn, val,
+                             startCol = 1 + mi, startRow = comp_row)
+        if (row_items[ri] == "Effective Tax Rate") {
+          openxlsx::addStyle(wb, sn, s$result_pct,
+                              rows = comp_row, cols = 1 + mi)
+        } else {
+          openxlsx::addStyle(wb, sn, s$result_currency,
+                              rows = comp_row, cols = 1 + mi)
+        }
+      }
+      comp_row <- comp_row + 1
+    }
+
+    # Best method highlight
+    comp_row <- comp_row + 1
+    openxlsx::writeData(wb, sn, "Recommended Method:",
+                         startCol = 1, startRow = comp_row)
+    openxlsx::addStyle(wb, sn, s$bold, rows = comp_row, cols = 1)
+    openxlsx::writeData(wb, sn, tc$recommendation,
+                         startCol = 2, startRow = comp_row)
+    openxlsx::mergeCells(wb, sn, cols = 2:4, rows = comp_row)
+
+    comp_row <- comp_row + 1
+    openxlsx::writeData(wb, sn,
+      paste0("Tax Savings vs. Ordinary: $",
+             formatC(tc$savings_vs_ordinary, format = "f", digits = 2,
+                     big.mark = ",")),
+      startCol = 1, startRow = comp_row)
+    openxlsx::addStyle(wb, sn, s$positive, rows = comp_row, cols = 1)
+    openxlsx::mergeCells(wb, sn, cols = 1:4, rows = comp_row)
+  } else {
+    openxlsx::writeData(wb, sn,
+      "Enter tax parameters above to see comparison.",
+      startCol = 1, startRow = comp_row)
+    openxlsx::addStyle(wb, sn, s$note, rows = comp_row, cols = 1)
+  }
+
+  # ---- SECTION 3: Reforestation Deduction (Section 194) ----
+  refor_row <- comp_row + 3
+  openxlsx::writeData(wb, sn,
+    "Reforestation Tax Deduction (IRC Section 194)",
+    startCol = 1, startRow = refor_row)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = refor_row, cols = 1:5)
+  refor_row <- refor_row + 1
+
+  if (reforestation_cost > 0) {
+    rd <- tryCatch(
+      reforestation_deduction(reforestation_cost, marginal_rate = marginal_rate),
+      error = function(e) NULL
+    )
+
+    if (!is.null(rd)) {
+      # Summary line
+      openxlsx::writeData(wb, sn,
+        paste0("Reforestation cost: $",
+               formatC(reforestation_cost, format = "f", digits = 2,
+                       big.mark = ",")),
+        startCol = 1, startRow = refor_row)
+      refor_row <- refor_row + 1
+
+      openxlsx::writeData(wb, sn,
+        paste0("Year 1 direct deduction: $",
+               formatC(rd$year_1_deduction, format = "f", digits = 2,
+                       big.mark = ",")),
+        startCol = 1, startRow = refor_row)
+      refor_row <- refor_row + 1
+
+      # Amortization schedule table
+      openxlsx::writeData(wb, sn, "84-Month Amortization Schedule",
+                           startCol = 1, startRow = refor_row)
+      openxlsx::addStyle(wb, sn, s$bold, rows = refor_row, cols = 1)
+      refor_row <- refor_row + 1
+
+      sched_headers <- c("Year", "Deduction", "Tax Savings", "Cumulative Savings")
+      for (hc in seq_along(sched_headers)) {
+        openxlsx::writeData(wb, sn, sched_headers[hc],
+                             startCol = hc, startRow = refor_row)
+        openxlsx::addStyle(wb, sn, s$col_header, rows = refor_row, cols = hc)
+      }
+      refor_row <- refor_row + 1
+
+      sched <- rd$amortization_schedule
+      for (ri in seq_len(nrow(sched))) {
+        openxlsx::writeData(wb, sn, sched$year[ri],
+                             startCol = 1, startRow = refor_row)
+        openxlsx::writeData(wb, sn, sched$deduction[ri],
+                             startCol = 2, startRow = refor_row)
+        openxlsx::addStyle(wb, sn, s$result_currency,
+                            rows = refor_row, cols = 2)
+        openxlsx::writeData(wb, sn, sched$tax_savings[ri],
+                             startCol = 3, startRow = refor_row)
+        openxlsx::addStyle(wb, sn, s$result_currency,
+                            rows = refor_row, cols = 3)
+        openxlsx::writeData(wb, sn, sched$cumulative_savings[ri],
+                             startCol = 4, startRow = refor_row)
+        openxlsx::addStyle(wb, sn, s$result_currency,
+                            rows = refor_row, cols = 4)
+        refor_row <- refor_row + 1
+      }
+
+      # Totals
+      refor_row <- refor_row + 1
+      openxlsx::writeData(wb, sn, "Total Tax Savings:",
+                           startCol = 1, startRow = refor_row)
+      openxlsx::addStyle(wb, sn, s$bold, rows = refor_row, cols = 1)
+      openxlsx::writeData(wb, sn, rd$total_tax_savings,
+                           startCol = 2, startRow = refor_row)
+      openxlsx::addStyle(wb, sn, s$positive, rows = refor_row, cols = 2)
+
+      refor_row <- refor_row + 1
+      openxlsx::writeData(wb, sn, "Effective Subsidy Rate:",
+                           startCol = 1, startRow = refor_row)
+      openxlsx::addStyle(wb, sn, s$bold, rows = refor_row, cols = 1)
+      openxlsx::writeData(wb, sn, rd$effective_subsidy_rate,
+                           startCol = 2, startRow = refor_row)
+      openxlsx::addStyle(wb, sn, s$result_pct, rows = refor_row, cols = 2)
+    }
+  } else {
+    openxlsx::writeData(wb, sn,
+      "Set reforestation_cost > 0 in tax_params to see Section 194 analysis.",
+      startCol = 1, startRow = refor_row)
+    openxlsx::addStyle(wb, sn, s$note, rows = refor_row, cols = 1)
+    openxlsx::mergeCells(wb, sn, cols = 1:4, rows = refor_row)
+  }
+
+  # ---- SECTION 4: Tax Reference Guide ----
+  ref_row <- refor_row + 3
+  openxlsx::writeData(wb, sn, "Tax Method Reference Guide",
+                       startCol = 1, startRow = ref_row)
+  openxlsx::addStyle(wb, sn, s$subheader, rows = ref_row, cols = 1:5)
+  ref_row <- ref_row + 1
+
+  guide <- data.frame(
+    Method = c("Section 631(a)", "Section 631(b)", "Ordinary Income"),
+    `When to Use` = c(
+      "Owner cuts or contracts cutting. Elective.",
+      "Outright sale of standing timber with economic interest.",
+      "Default if no 631 election made."),
+    `Gain Treatment` = c(
+      "Section 1231 (capital gains) if held > 1 yr",
+      "Section 1231 (capital gains) if held > 1 yr",
+      "All gain taxed at ordinary rates"),
+    `Key Advantage` = c(
+      "Most flexible; can be elected/revoked",
+      "Simpler; suitable for lump-sum sales",
+      "No advantage — baseline comparison"),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+
+  openxlsx::writeData(wb, sn, guide, startCol = 1, startRow = ref_row,
+                       headerStyle = s$col_header)
+
+  # ---- Notes ----
+  note_row <- ref_row + 5
+  openxlsx::writeData(wb, sn,
+    paste0("Notes: This is an educational tool, not tax advice. Consult a ",
+           "qualified tax professional for actual filing decisions. ",
+           "References: IRS Publication 535, Siegel et al. (2009) ",
+           "GTR-SRS-112, National Timber Tax Website (timbertax.org)."),
+    startCol = 1, startRow = note_row)
+  openxlsx::addStyle(wb, sn, s$note, rows = note_row, cols = 1)
+  openxlsx::mergeCells(wb, sn, cols = 1:4, rows = note_row)
+
+  openxlsx::setColWidths(wb, sn, cols = 1:5, widths = c(30, 18, 18, 18, 22))
+  openxlsx::protectWorksheet(wb, sn, protect = TRUE)
+}
+
+
+# =============================================================================
+# SHEET 11: SUMMARY
 # =============================================================================
 .build_summary_sheet <- function(wb, s, title, author, yield_tbl, schedule,
                                    discount_rate, regen_cost, annual_cost,
-                                   time_horizon, has_yield, has_schedule) {
+                                   time_horizon, has_yield, has_schedule,
+                                   has_tax = FALSE) {
   sn <- "Summary"
   openxlsx::addWorksheet(wb, sn)
 
@@ -2129,6 +2422,12 @@ export_excel <- function(yield_tbl = NULL, schedule = NULL,
     sheet_guide <- rbind(sheet_guide, data.frame(
       Sheet = "Scenarios",
       Description = "Compare Base, Optimistic, Pessimistic, Custom",
+      stringsAsFactors = FALSE))
+  }
+  if (has_tax) {
+    sheet_guide <- rbind(sheet_guide, data.frame(
+      Sheet = "Tax Analysis",
+      Description = "IRC Section 631 comparison, depletion, reforestation",
       stringsAsFactors = FALSE))
   }
   sheet_guide <- rbind(sheet_guide, data.frame(

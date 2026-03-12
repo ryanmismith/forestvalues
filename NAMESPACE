@@ -27,6 +27,22 @@ export(yield_table)
 export(optimal_rotation_mp)
 export(rotation_comparison_mp)
 
+# Appraisal & valuation
+export(discount_rate_buildup)
+export(liquidation_value)
+export(mid_rotation_value)
+export(comparable_sale)
+export(timberland_value)
+export(hold_vs_sell)
+export(tract_aggregate)
+
+# Timber taxation
+export(timber_tax)
+export(depletion_schedule)
+export(after_tax_npv)
+export(tax_comparison)
+export(reforestation_deduction)
+
 # Excel export
 export(export_excel)
 
