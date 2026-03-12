@@ -176,12 +176,23 @@ draw_from_dist <- function(spec) {
 #' **GBM** (Geometric Brownian Motion): Prices follow a random walk with drift.
 #' Prices can trend upward/downward and cannot go negative. Standard in
 #' financial economics.
-#' dP = mu * P * dt + sigma * P * dW
+#' \deqn{dP = \mu P \, dt + \sigma P \, dW}
 #'
 #' **OU** (Ornstein-Uhlenbeck): Prices revert toward a long-run mean. More
 #' realistic for commodity prices that are mean-reverting due to supply
-#' adjustments.
-#' dP = kappa * (theta - P) * dt + sigma * dW
+#' adjustments (Brazee & Mendelsohn 1988; Thomson 1992; Insley 2002).
+#' \deqn{dP = \kappa(\theta - P) \, dt + \sigma \, dW}
+#'
+#' **Empirical parameter guidance (Southern pine sawtimber):**
+#' \describe{
+#'   \item{OU}{kappa = 0.12-0.25, theta = $240-$320/MBF, sigma = $35-$55/MBF
+#'     (Mei, Clutter & Harris 2010; Prestemon & Wear 2000)}
+#'   \item{GBM}{mu = 0.5-2.5\%, sigma = 12-20\%
+#'     (Thomson 1992; Brazee & Mendelsohn 1988)}
+#' }
+#' See the package vignette (\code{vignette("forest_economics_guide")},
+#' Section "Empirical Price Process Parameters") for full parameter tables
+#' by product and region.
 #'
 #' @param n_periods Integer. Number of time periods (years) to simulate.
 #' @param initial_price Numeric. Starting price.
@@ -189,8 +200,10 @@ draw_from_dist <- function(spec) {
 #'   Ornstein-Uhlenbeck mean-reverting process.
 #' @param drift Numeric. Annual drift rate for GBM (mu). Default 0.
 #' @param volatility Numeric. Annual volatility (sigma). Default 0.2.
+#'   For GBM this is proportional volatility (e.g., 0.20 = 20\% per year).
+#'   For OU this is absolute volatility in price units (e.g., 45 = $45/MBF).
 #' @param mean_reversion_rate Numeric. Speed of mean reversion for OU (kappa).
-#'   Required when process = "ou".
+#'   Half-life of deviation = ln(2)/kappa. Required when process = "ou".
 #' @param long_run_mean Numeric. Long-run equilibrium price for OU (theta).
 #'   Required when process = "ou".
 #' @param n_paths Integer. Number of price paths to simulate. Default 1.
@@ -200,6 +213,9 @@ draw_from_dist <- function(spec) {
 #'   Row 1 is the initial price.
 #'
 #' @references
+#' Brazee, R.J. & Mendelsohn, R. (1988). "Timber harvesting with fluctuating
+#' prices." *Forest Science* 34(2): 359-372.
+#'
 #' Thomson, T.A. (1992). "Optimal forest rotation when stumpage prices follow
 #' a diffusion process." *Land Economics* 68(3): 329-342.
 #'
@@ -210,21 +226,33 @@ draw_from_dist <- function(spec) {
 #' Insley, M. (2002). "A real options approach to the valuation of a forestry
 #' investment." *Journal of Environmental Economics and Management* 44(3): 471-492.
 #'
+#' Mei, B., Clutter, M.L., & Harris, T.G. (2010). "Modeling and forecasting
+#' pine sawtimber stumpage prices in the US South." *Forest Science* 56(5):
+#' 471-479.
+#'
 #' Dixit, A.K. & Pindyck, R.S. (1994). *Investment Under Uncertainty*.
 #' Princeton University Press.
 #'
 #' @examples
-#' # GBM: stumpage prices with 2% drift and 20% volatility
-#' paths <- stochastic_prices(30, 50, process = "gbm",
-#'                             drift = 0.02, volatility = 0.2,
+#' # Southern pine sawtimber GBM (Thomson 1992 range)
+#' paths <- stochastic_prices(40, 270, process = "gbm",
+#'                             drift = 0.015, volatility = 0.18,
 #'                             n_paths = 100, seed = 42)
-#' matplot(0:30, paths, type = "l", col = "gray70", lty = 1,
+#' matplot(0:40, paths, type = "l", col = "gray70", lty = 1,
 #'         xlab = "Year", ylab = "Price ($/MBF)")
 #'
-#' # OU: mean-reverting around $50 with kappa = 0.1
-#' paths_ou <- stochastic_prices(30, 50, process = "ou",
-#'                                volatility = 10, mean_reversion_rate = 0.1,
-#'                                long_run_mean = 50, n_paths = 100, seed = 42)
+#' # Southern pine sawtimber OU (Mei & Clutter 2010 range)
+#' # kappa=0.18, theta=$280/MBF, sigma=$45/MBF
+#' paths_ou <- stochastic_prices(40, 270, process = "ou",
+#'                                volatility = 45, mean_reversion_rate = 0.18,
+#'                                long_run_mean = 280, n_paths = 100, seed = 42)
+#'
+#' # Southern pine pulpwood OU (Prestemon & Wear 2000)
+#' paths_pulp <- stochastic_prices(40, 9, process = "ou",
+#'                                   volatility = 2.0,
+#'                                   mean_reversion_rate = 0.30,
+#'                                   long_run_mean = 10,
+#'                                   n_paths = 50, seed = 42)
 #'
 #' @seealso \code{\link{monte_carlo}}, \code{\link{simulate_yield}}
 #'
