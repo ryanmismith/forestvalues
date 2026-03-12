@@ -1,0 +1,3230 @@
+---
+title: "Forest Economics with `forestvalues`"
+subtitle: "A Comprehensive Reference for Practitioners and Researchers"
+author: "Ryan Smith"
+date: last-modified
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    theme: cosmo
+bibliography: references.bib
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(forestvalues)
+library(ggplot2)
+```
+
+# Introduction {#sec-intro}
+
+## What This Package Does
+
+`forestvalues` is an R package for **forest economic analysis**. It provides tools for:
+
+- **Net Present Value (NPV)** and **Internal Rate of Return (IRR)** of forest investments
+- **Land Expectation Value (LEV)** using the Faustmann formula
+- **Optimal rotation age** determination
+- **Stumpage valuation** with configurable price tables
+- **Cash flow scheduling** and income projection
+- **Monte Carlo simulation** for risk analysis
+- **Sensitivity analysis** including tornado diagrams and breakeven analysis
+
+Every function is documented with **academic citations**, **use cases**, **limitations**, and **worked examples**.
+
+## Who This Is For
+
+- **Practitioners**: Foresters, timberland investment managers, land trust analysts, carbon project developers
+- **Researchers**: Forest economists, natural resource economists, graduate students
+
+## Installation
+
+```r
+# From GitHub
+devtools::install_github("ryanmismith/forestvalues")
+```
+
+## Design Philosophy
+
+This package replaces error-prone spreadsheet-based analysis with reproducible, tested R functions. As described in the original concept document: when one forester works on `T7R10_V2.xlsx` and another on `T7R10_V3.xlsx` with different discount rates, decisions get made on inconsistent math. `forestvalues` eliminates this problem.
+
+---
+
+# Time Value of Money {#sec-tvm}
+
+All forest economics rests on the **time value of money**: a dollar today is worth more than a dollar in the future because it can be invested to earn a return. The two fundamental operations are **discounting** (future → present) and **compounding** (present → future).
+
+## `discount()` — Present Value of a Future Amount
+
+### Purpose
+Calculates the present value of a future cash flow: $PV = \frac{FV}{(1+r)^t}$
+
+### Use Cases
+- **Practitioner**: "What is a $100,000 harvest in 30 years worth today at a 6% discount rate?"
+- **Researcher**: "Discounting ecosystem service flows to evaluate conservation policy"
+
+### Best Practices
+- Use **real** (inflation-adjusted) discount rates with **real** cash flows, or **nominal** rates with **nominal** flows. Never mix them.
+- Common real discount rates in forestry: 2-8% (Klemperer 1996, p. 89). Higher for private industrial, lower for public/conservation.
+
+### Limitations
+- Assumes a constant discount rate. Hyperbolic or declining discount rates (used in some conservation economics) require custom implementation.
+
+### Warnings
+- A discount rate of 8% vs. 4% can change a 50-year NPV by an order of magnitude. Always perform sensitivity analysis on the discount rate.
+
+### Examples
+
+```{r}
+# PV of $100,000 harvest revenue in 30 years at 6%
+discount(100000, 0.06, 30)
+
+# Vectorized: compare different time horizons
+discount(100000, 0.06, c(10, 20, 30, 40, 50))
+```
+
+### Citation
+Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 4.
+
+
+## `compound()` — Future Value of a Present Amount
+
+### Purpose
+Calculates the future value: $FV = PV \times (1+r)^t$
+
+### Use Cases
+- **Practitioner**: "What will my $750 planting cost have effectively cost me by rotation age?"
+- **Researcher**: "Computing opportunity costs of deferred harvest"
+
+### Examples
+
+```{r}
+# FV of $750 planting cost after 40 years at 6%
+compound(750, 0.06, 40)
+
+# Compare: the $750 planting cost is equivalent to $7,714 at harvest
+```
+
+### Citation
+Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 4.
+
+---
+
+# Net Present Value {#sec-npv}
+
+NPV is the standard criterion for evaluating forest investments. It sums all cash flows, each discounted to the present:
+
+$$NPV = \sum_{t=0}^{T} \frac{CF_t}{(1+r)^t}$$
+
+A positive NPV means the investment earns more than the discount rate.
+
+## `npv()` — Net Present Value
+
+### Purpose
+Calculates NPV from a vector of signed cash flows at specified times.
+
+### Use Cases
+- **Practitioner**: "Is this timber sale offer worth accepting?"
+- **Researcher**: "Comparing the economic efficiency of silvicultural regimes"
+
+### Best Practices
+- Cash flows should be **signed**: negative for costs, positive for revenues.
+- The discount rate should reflect the **opportunity cost of capital** for the decision-maker.
+- For comparing projects with different time horizons, use `annualize()` or `lev()`.
+
+### Limitations
+- NPV assumes cash flows are known with certainty. For uncertain outcomes, use `monte_carlo()`.
+- NPV does not account for capital rationing (limited budget across multiple projects). For that, use incremental analysis or linear programming.
+- A single rotation NPV does not capture the opportunity cost of the land. Use `lev()` for perpetual rotations.
+
+### Warnings
+- **Do not compare NPVs of projects with different time horizons** without annualizing. A 30-year NPV of $5,000 is not directly comparable to a 50-year NPV of $7,000.
+- NPV is highly sensitive to the discount rate. Always report sensitivity analysis results.
+
+### Examples
+
+```{r}
+# Simple plantation: plant at year 0, harvest at year 30
+npv(
+  cash_flows = c(-1500, 45000),
+  times = c(0, 30),
+  discount_rate = 0.06
+)
+
+# Complex: planting, PCT, thinning, final harvest
+npv(
+  cash_flows = c(-750, -800, 2500, 6600),
+  times = c(0, 12, 20, 40),
+  discount_rate = 0.06
+)
+```
+
+### Citations
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 5-6.
+- Bettinger, P. et al. (2017). *Forest Management and Planning*. 2nd ed. Academic Press. Ch. 8.
+- Bullard, S.H. & Straka, T.J. (2011). *Basic Concepts in Forest Valuation and Investment Analysis*. 3rd ed. Ch. 4-5.
+
+
+## `npv_schedule()` — NPV from a Management Schedule
+
+### Purpose
+Calculates NPV for complex scenarios with mixed payment types: one-time, annual, and periodic cash flows.
+
+### Use Cases
+- **Practitioner**: "What is the NPV of my entire management plan including annual taxes, periodic thinnings, and a final harvest?"
+- **Researcher**: "Comparing carbon credit scenarios with business-as-usual management"
+
+### Best Practices
+- Use a data.frame with columns: `amount`, `year`, `frequency`, `period_length`.
+- Frequencies: `"once"` for one-time events, `"annual"` for yearly recurring, `"periodic"` for regular intervals.
+
+### Limitations
+- Assumes all costs/revenues within a frequency class use the same discount rate.
+- Does not model price growth (use `stochastic_prices()` for that).
+
+### Examples
+
+```{r}
+# Carbon credit scenario from the original concept document
+carbon_schedule <- data.frame(
+  amount = c(-750, 4000, -50, -500, -750, 2000),
+  year = c(0, 0, 0, 10, 15, 40),
+  frequency = c("once", "once", "annual", "periodic", "once", "once"),
+  period_length = c(NA, NA, NA, 10, NA, NA)
+)
+npv_schedule(carbon_schedule, discount_rate = 0.06, time_horizon = 40)
+```
+
+
+## `incremental_npv()` — Comparing Alternatives
+
+### Purpose
+Computes the difference in NPV between two mutually exclusive alternatives.
+
+### Use Cases
+- **Practitioner**: "Should I enroll in a carbon program or continue business-as-usual?"
+
+### Examples
+
+```{r}
+# Carbon vs. BAU
+result <- incremental_npv(
+  alt_flows = c(-750, 4000, -500, -750, 2000),  # Carbon
+  alt_times = c(0, 0, 0, 15, 40),
+  base_flows = c(-750, -275, -800, 2500, 2500, 2500),  # BAU
+  base_times = c(0, 5, 12, 20, 30, 40),
+  discount_rate = 0.06
+)
+cat("Carbon NPV:", round(result$npv_alternative, 2), "\n")
+cat("BAU NPV:", round(result$npv_baseline, 2), "\n")
+cat("Preferred:", result$preferred, "\n")
+```
+
+### Citation
+Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 6.
+
+---
+
+# Internal Rate of Return {#sec-irr}
+
+The IRR is the discount rate that makes NPV equal to zero. It answers: "What rate of return does this investment earn?"
+
+$$\text{Find } r \text{ such that } \sum_{t=0}^{T} \frac{CF_t}{(1+r)^t} = 0$$
+
+There is no closed-form solution; `irr()` uses numerical root-finding.
+
+## `irr()` — Internal Rate of Return
+
+### Purpose
+Finds the discount rate where NPV = 0.
+
+### Use Cases
+- **Practitioner**: "What annual return does this timber investment generate?"
+- **Researcher**: "Comparing returns across asset classes (timberland vs. equities vs. bonds)"
+
+### Best Practices
+- IRR is best for **accept/reject** decisions against a hurdle rate: if IRR > hurdle, accept.
+- For **ranking** mutually exclusive projects, use NPV instead (IRR can give conflicting rankings).
+
+### Limitations
+- **Multiple IRRs**: When cash flows change sign more than once (e.g., investment, income, then remediation cost), multiple IRRs may exist. The function warns when this occurs. Use `mirr()` instead.
+- **Scale blindness**: A $100 investment with 50% IRR is not necessarily better than a $100,000 investment with 20% IRR. NPV captures scale; IRR does not.
+- **Reinvestment assumption**: IRR implicitly assumes intermediate cash flows are reinvested at the IRR itself, which may be unrealistic. MIRR explicitly separates the reinvestment rate.
+
+### Warnings
+- **The Fisher intersection problem**: IRR and NPV can rank mutually exclusive projects differently. This happens when projects have different scales or timing. At discount rates below the Fisher rate, one project dominates; above it, the other does. Always use NPV for ranking.
+- IRR does not exist for projects that are always profitable or always unprofitable at all discount rates.
+
+### Examples
+
+```{r}
+# Simple plantation: invest $1,500, harvest $45,000 in 30 years
+irr(c(-1500, 45000), c(0, 30))
+
+# What return does the full management plan earn?
+irr(
+  cash_flows = c(-750, -800, 2500, 6600),
+  times = c(0, 12, 20, 40)
+)
+```
+
+### Citations
+- Boulding, K.E. (1935). "The theory of a single investment." *Quarterly Journal of Economics* 49(3): 475-494.
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 7.
+- Hazen, G.B. (2003). "A new perspective on multiple internal rates of return." *The Engineering Economist* 48(1): 31-51.
+
+
+## `mirr()` — Modified Internal Rate of Return
+
+### Purpose
+Computes MIRR, which resolves the multiple-IRR problem and the reinvestment rate assumption by explicitly separating the financing rate from the reinvestment rate.
+
+$$MIRR = \left(\frac{FV_{\text{positives}}}{|PV_{\text{negatives}}|}\right)^{1/n} - 1$$
+
+### Use Cases
+- **Researcher**: "Analyzing investments with non-conventional cash flows (e.g., carbon project requiring later remediation)"
+
+### Examples
+
+```{r}
+mirr(
+  cash_flows = c(-1500, -800, 2500, 6600),
+  times = c(0, 12, 20, 40),
+  finance_rate = 0.06,
+  reinvest_rate = 0.04
+)
+```
+
+---
+
+# Land Expectation Value {#sec-lev}
+
+The **Faustmann formula** (1849) is the most important equation in forest economics. LEV (also called Bare Land Value or Soil Expectation Value) is the present value of bare forestland managed in perpetuity under an identical rotation regime.
+
+$$LEV = \frac{NR_T}{(1+r)^T - 1}$$
+
+where $NR_T$ is the net revenue at rotation age $T$. More generally, for a rotation with multiple cash flows:
+
+$$LEV = \frac{NPV_{\text{rotation}} \times (1+r)^T}{(1+r)^T - 1}$$
+
+## `lev()` — Land Expectation Value
+
+### Purpose
+Computes the Faustmann LEV for a single rotation's net revenue repeated in perpetuity.
+
+### Use Cases
+- **Practitioner**: "What is my bare land worth if I manage it for timber forever?"
+- **Researcher**: "The fundamental metric for comparing forestry land use alternatives"
+
+### Best Practices
+- LEV is the appropriate criterion when land has an opportunity cost (i.e., a new rotation starts immediately after harvest). If land has no alternative use, single-rotation NPV may suffice.
+- LEV assumes **identical rotations**: same costs, prices, growth, and discount rate forever. This is a simplification but provides a useful benchmark.
+
+### Limitations
+- Does not account for: changing site productivity, climate change impacts on growth, non-timber values (recreation, carbon, biodiversity), tax policy changes.
+- Assumes immediate regeneration after harvest. Regeneration delays reduce LEV.
+- Assumes constant real prices. Use `monte_carlo()` to relax this assumption.
+
+### Warnings
+- **LEV can be negative.** This means the land is worth more in an alternative use (or doing nothing) than in timber production.
+- Very sensitive to the discount rate. At high discount rates, long rotations produce near-zero or negative LEV.
+- **LEV is NOT the market price of timberland.** Market prices include the value of existing timber; LEV is the value of bare land only.
+
+### Examples
+
+```{r}
+# Simple case: $52,000 net revenue at age 40, 6% discount
+lev(52000, rotation_age = 40, discount_rate = 0.06)
+
+# From a rotation NPV of $5,000
+lev(5000, rotation_age = 30, discount_rate = 0.06, is_npv = TRUE)
+
+# LEV across discount rates (sensitivity)
+rates <- seq(0.02, 0.10, by = 0.01)
+levs <- sapply(rates, function(r) lev(52000, 40, r))
+plot(rates, levs, type = "b", xlab = "Discount Rate", ylab = "LEV ($)",
+     main = "LEV Sensitivity to Discount Rate")
+abline(h = 0, lty = 2)
+```
+
+### Citations
+- Faustmann, M. (1849). "Berechnung des Werthes welchen Waldboden..." *Allgemeine Forst- und Jagd-Zeitung* 25: 441-455.
+- Samuelson, P.A. (1976). "Economics of forestry in an evolving society." *Economic Inquiry* 14(4): 466-492.
+- Brazee, R.J. (2001). "The Faustmann Formula: Fundamental to Forest Economics 150 Years After Publication." *Forest Science* 47(4): 441-442.
+
+
+## `bare_land_value()` — Practitioner Alias
+
+Identical to `lev()`. "Bare Land Value" (BLV) is the term used by timberland appraisers and investment managers; "Land Expectation Value" (LEV) is the academic term.
+
+
+## `lev_schedule()` — LEV from a Complex Schedule
+
+### Purpose
+Computes LEV for a full management plan with mixed payment types.
+
+### Examples
+
+```{r}
+# Business-as-usual scenario
+bau <- data.frame(
+  amount = c(-750, -50, -275, -800, 2500, 2500, 2500),
+  year = c(0, 0, 5, 12, 20, 30, 40),
+  frequency = c("once", "annual", "once", "once", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA, NA)
+)
+lev_schedule(bau, discount_rate = 0.06, rotation_age = 40)
+```
+
+---
+
+# Optimal Rotation Age {#sec-rotation}
+
+The optimal rotation age balances growth (waiting increases volume) against the opportunity cost of capital (waiting delays revenue and ties up land). Three criteria exist:
+
+1. **Faustmann rotation** (maximize LEV): economically optimal when land has an opportunity cost
+2. **Financial maturity** (maximize single-rotation NPV): when land has no alternative use
+3. **Biological rotation** (maximize MAI): silvicultural, not economic
+
+Key result: **Faustmann rotation < NPV rotation < MAI rotation** (Amacher et al. 2009).
+
+## `optimal_rotation()`
+
+### Purpose
+Finds the rotation age that maximizes LEV, NPV, or MAI.
+
+### Use Cases
+- **Practitioner**: "When should I harvest this stand to maximize land value?"
+- **Researcher**: "How does the carbon tax affect optimal rotation?"
+
+### Best Practices
+- Use `criterion = "lev"` (default) for most practical applications.
+- `yield_fn` can be a function or a data.frame with `age` and `volume` columns.
+
+### Limitations
+- Assumes a single-species, even-aged stand. Uneven-aged and mixed-species stands require different optimization approaches.
+- Does not incorporate non-timber benefits. For carbon-inclusive rotations, add carbon revenue to the cash flow schedule.
+- Assumes prices and costs are constant in real terms.
+
+### Warnings
+- **Higher discount rates always shorten the Faustmann rotation.** At very high rates, the optimal rotation may be biologically premature.
+- The relationship between the discount rate and rotation length follows the Pressler (1860) marginal condition: harvest when the marginal growth rate equals $r + \frac{r}{(1+r)^T - 1}$.
+
+### Examples
+
+```{r}
+# Define a yield function (Chapman-Richards growth model)
+yield <- function(age) 200 * (1 - exp(-0.03 * age))^3
+
+# Faustmann rotation
+result <- optimal_rotation(yield, stumpage_price = 50, regen_cost = 750,
+                            annual_cost = 5, discount_rate = 0.06)
+cat("Optimal age:", round(result$optimal_age), "years\n")
+cat("LEV at optimum: $", round(result$value_at_optimum, 2), "\n")
+
+# Compare all three criteria
+for (crit in c("lev", "npv", "mai")) {
+  r <- optimal_rotation(yield, 50, 750, 5, 0.06, criterion = crit)
+  cat(toupper(crit), "rotation:", round(r$optimal_age), "years\n")
+}
+```
+
+## `rotation_comparison()`
+
+### Purpose
+Tabulates NPV, LEV, MAI, and volume across a range of rotation ages.
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 10
+yield <- function(age) 200 * (1 - exp(-0.03 * age))^3
+comp <- rotation_comparison(yield, 50, 750, 5, 0.06, ages = seq(15, 80, by = 5))
+plot(comp)
+```
+
+### Citations
+- Faustmann, M. (1849). (See @sec-lev)
+- Pressler, M.R. (1860). "Aus der Holzzuwachlehre." *Allgemeine Forst- und Jagd-Zeitung* 36: 173-191.
+- Newman, D.H. (2002). "Forestry's golden rule and the development of the optimal forest rotation literature." *Journal of Forest Economics* 8(1): 5-27.
+- Amacher, G.S., Ollikainen, M., & Koskela, E. (2009). *Economics of Forest Resources*. MIT Press. Ch. 2.
+
+---
+
+# Timber Valuation {#sec-stumpage}
+
+Stumpage is the price paid to the landowner for standing timber, as opposed to the delivered log price. It varies by species, product class, region, and market conditions.
+
+## `stumpage_value()`
+
+### Purpose
+Looks up stumpage values from a price table (default: 2019 Maine averages).
+
+### Use Cases
+- **Practitioner**: "What is my timber inventory worth at current prices?"
+- **Researcher**: "Sensitivity of rotation decisions to stumpage price assumptions"
+
+### Best Practices
+- **Always supply current prices** via `price_table`. The default 2019 Maine prices are for illustration only.
+- Use `update_prices()` for simple inflation adjustment.
+- For regional analysis, build custom price tables with `create_price_table()`.
+
+### Limitations
+- Does not model price dynamics (trends, cycles, volatility). Use `stochastic_prices()` for that.
+- Default prices are statewide averages and may not reflect local markets.
+
+### Warnings
+- Stumpage prices are **not** delivered log prices. The difference (logging cost, trucking) can be 50% or more of delivered price.
+- Prices vary enormously by log grade. This function does not handle grade-differentiated pricing.
+
+### Examples
+
+```{r}
+# Sugar maple sawlog: 10 MBF at default Maine 2019 prices
+suppressMessages(stumpage_value("SM", 10, "sawlog"))
+
+# Custom prices
+my_prices <- create_price_table(
+  species = c("SM", "RO", "WP"),
+  product_class = c("sawlog", "sawlog", "sawlog"),
+  price = c(300, 350, 200),
+  unit = c("mbf", "mbf", "mbf")
+)
+stumpage_value(c("SM", "RO", "WP"), c(10, 15, 25), "sawlog",
+               price_table = my_prices)
+
+# Inflate 2019 prices to 2026 at 3% annual inflation
+updated <- update_prices(my_prices, 0.03, 2019, 2026)
+updated
+```
+
+### Citations
+- Wagner, J.E. (2012). *Forestry Economics: A Managerial Approach*. Routledge. Ch. 5.
+- Maine Forest Service (2019). Stumpage price report.
+
+---
+
+# Income Projection {#sec-income}
+
+## `cash_flow_schedule()`
+
+### Purpose
+Expands management activities into a year-by-year cash flow table with cumulative NPV tracking.
+
+### Use Cases
+- **Practitioner**: "Build a complete financial plan for a woodlot"
+- **Researcher**: "Visualize the time profile of forest investment returns"
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+activities <- data.frame(
+  name = c("Planting", "Property Tax", "PCT", "Thinning", "Final Harvest"),
+  amount = c(-750, -50, -800, 2500, 6600),
+  year = c(0, 0, 12, 20, 40),
+  frequency = c("once", "annual", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA)
+)
+schedule <- cash_flow_schedule(activities, time_horizon = 40, discount_rate = 0.06)
+plot(schedule)
+```
+
+## `project_income()`
+
+### Purpose
+Projects timber income from a yield function and price assumptions.
+
+### Examples
+
+```{r}
+yield <- function(age) 200 * (1 - exp(-0.03 * age))^3
+result <- project_income(yield, stumpage_price = 50,
+                          harvest_ages = c(25, 40),
+                          regen_cost = 750, annual_cost = 5,
+                          discount_rate = 0.06)
+result$harvests
+cat("NPV:", round(result$npv, 2), "\n")
+cat("LEV:", round(result$lev, 2), "\n")
+```
+
+## `annualize()`
+
+### Purpose
+Converts a lump-sum present value to an equivalent annual annuity. Essential for comparing investments with different time horizons.
+
+$$AE = PV \times \frac{r}{1 - (1+r)^{-n}}$$
+
+### Examples
+
+```{r}
+# Which is better: a 30-year rotation with NPV=$5,000 or a 50-year with NPV=$7,000?
+cat("30-year annual equivalent: $", round(annualize(5000, 0.06, 30), 2), "\n")
+cat("50-year annual equivalent: $", round(annualize(7000, 0.06, 50), 2), "\n")
+```
+
+### Citations
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 6, 9.
+
+---
+
+# Stochastic Modeling {#sec-stochastic}
+
+Forest investments span decades. Over that time, stumpage prices fluctuate, yields vary with weather and site conditions, and discount rates change with monetary policy. Deterministic analysis pretends these variables are known with certainty. **Stochastic modeling** propagates uncertainty through the financial model.
+
+## `monte_carlo()` — General-Purpose Monte Carlo Engine
+
+### Purpose
+Runs N simulations of any economic metric (NPV, LEV, IRR) with user-specified probability distributions for uncertain parameters.
+
+### Use Cases
+- **Practitioner**: "What is the probability that this timber investment loses money?"
+- **Researcher**: "Characterizing the NPV distribution under joint price-yield uncertainty"
+
+### Best Practices
+- Use at least 10,000 simulations for stable results.
+- Set `seed` for reproducibility.
+- Choose distributions carefully:
+  - **Lognormal**: for prices (always positive, right-skewed)
+  - **Normal**: for discount rates, growth parameters
+  - **Uniform**: when you only know a plausible range
+  - **Triangular**: when you know min, max, and most likely value
+
+### Limitations
+- Assumes independence between stochastic parameters unless you model correlation explicitly.
+- The `eval_fn` is called once per simulation — computationally intensive for complex models.
+- Does not capture autocorrelation in price or yield processes over time (use `stochastic_prices()` for that).
+
+### Warnings
+- **Garbage in, garbage out.** The Monte Carlo output is only as good as the input distributions. Carefully justify distributional choices.
+- P(loss) is not the same as expected loss. Use `risk_metrics()` for expected shortfall.
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+# Uncertain stumpage price and discount rate
+my_npv <- function(price, cost, discount_rate) {
+  npv(c(-cost, price * 150), c(0, 30), discount_rate)
+}
+
+mc_result <- monte_carlo(
+  eval_fn = my_npv,
+  base_params = list(cost = 750),
+  stochastic_params = list(
+    price = list(dist = "lognormal", meanlog = log(50), sdlog = 0.3),
+    discount_rate = list(dist = "uniform", min = 0.03, max = 0.09)
+  ),
+  n_sims = 5000, seed = 42
+)
+summary(mc_result)
+plot(mc_result)
+```
+
+### Citations
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 10.
+- Brazee, R.J. & Mendelsohn, R. (1988). "Timber harvesting with fluctuating prices." *Forest Science* 34(2): 359-372.
+
+
+## `stochastic_prices()` — Simulated Price Paths
+
+### Purpose
+Generates simulated price paths using either:
+
+- **GBM** (Geometric Brownian Motion): $dP = \mu P \, dt + \sigma P \, dW$ — prices can drift and cannot go negative
+- **OU** (Ornstein-Uhlenbeck): $dP = \kappa(\theta - P) \, dt + \sigma \, dW$ — prices revert toward a long-run mean
+
+### Use Cases
+- **Researcher**: "Modeling stumpage price uncertainty over a 40-year rotation"
+- **Practitioner**: "Stress testing: what if prices collapse in year 20?"
+
+### Best Practices
+- **GBM** is appropriate when prices have no natural equilibrium (common in financial modeling).
+- **OU** is more appropriate for commodity prices that are mean-reverting due to supply-demand adjustment (more realistic for stumpage).
+- Calibrate parameters from historical price data when available.
+
+### Limitations
+- These are simple diffusion models. They do not capture jumps (sudden price crashes), regime changes, or structural breaks.
+- OU process can produce negative prices for high volatility — cap at zero if needed.
+
+### Warnings
+- GBM prices grow exponentially on average. For very long horizons (>50 years) with positive drift, prices can become unrealistically large.
+- Volatility parameters must be calibrated to data. Using arbitrary values produces arbitrary results.
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+# GBM: 50 price paths over 40 years
+paths_gbm <- stochastic_prices(40, 50, "gbm", drift = 0.01, volatility = 0.15,
+                                n_paths = 50, seed = 42)
+matplot(0:40, paths_gbm, type = "l", col = adjustcolor("steelblue", 0.3),
+        lty = 1, xlab = "Year", ylab = "Stumpage Price ($/MBF)",
+        main = "GBM Price Paths")
+abline(h = 50, lty = 2, col = "red")
+
+# OU: mean-reverting around $50
+paths_ou <- stochastic_prices(40, 50, "ou", volatility = 8,
+                               mean_reversion_rate = 0.15, long_run_mean = 50,
+                               n_paths = 50, seed = 42)
+matplot(0:40, paths_ou, type = "l", col = adjustcolor("darkgreen", 0.3),
+        lty = 1, xlab = "Year", ylab = "Stumpage Price ($/MBF)",
+        main = "Ornstein-Uhlenbeck Price Paths")
+abline(h = 50, lty = 2, col = "red")
+```
+
+### Citations
+- Thomson, T.A. (1992). "Optimal forest rotation when stumpage prices follow a diffusion process." *Land Economics* 68(3): 329-342.
+- Insley, M. (2002). "A real options approach to the valuation of a forestry investment." *JEEM* 44(3): 471-492.
+- Dixit, A.K. & Pindyck, R.S. (1994). *Investment Under Uncertainty*. Princeton University Press.
+
+
+## `simulate_yield()` — Stochastic Yield Variation
+
+### Purpose
+Adds multiplicative lognormal noise to a deterministic yield curve. Unbiased: $E[Y_{sim}] = Y_{det}$.
+
+### Examples
+
+```{r}
+yield <- function(age) 200 * (1 - exp(-0.03 * age))^3
+sims <- simulate_yield(yield, ages = c(20, 30, 40), cv = 0.15,
+                        n_sims = 5000, seed = 42)
+cat("Deterministic yields:", yield(c(20, 30, 40)), "\n")
+cat("Simulated means:", round(rowMeans(sims), 1), "\n")
+cat("Simulated SDs:", round(apply(sims, 1, sd), 1), "\n")
+```
+
+
+## `risk_metrics()` — VaR, P(loss), Expected Shortfall
+
+### Purpose
+Computes risk statistics from simulation output.
+
+### Examples
+
+```{r}
+metrics <- risk_metrics(mc_result)
+cat("5% VaR:", round(metrics$var, 2), "\n")
+cat("P(loss):", round(metrics$prob_loss * 100, 1), "%\n")
+cat("Expected shortfall:", round(metrics$expected_shortfall, 2), "\n")
+```
+
+---
+
+# Sensitivity Analysis {#sec-sensitivity}
+
+Sensitivity analysis answers: **"Which assumptions matter most?"** It is simpler than Monte Carlo (no probability distributions needed) but does not produce probability statements.
+
+## `sensitivity_1way()` — One-Way Sensitivity
+
+### Purpose
+Varies one parameter while holding all others fixed.
+
+### Use Cases
+- **Practitioner**: "How does the discount rate affect my timber investment NPV?"
+- **Researcher**: "Mapping the NPV-discount rate relationship for policy analysis"
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+my_npv <- function(price, cost, discount_rate) {
+  npv(c(-cost, price * 150), c(0, 30), discount_rate)
+}
+
+sens <- sensitivity_1way(
+  my_npv, "discount_rate", seq(0.02, 0.12, by = 0.01),
+  base_params = list(price = 50, cost = 750, discount_rate = 0.06)
+)
+plot(sens)
+```
+
+
+## `sensitivity_2way()` — Two-Way Sensitivity
+
+### Purpose
+Varies two parameters simultaneously across a grid.
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 6
+sens2 <- sensitivity_2way(
+  my_npv, "price", seq(20, 80, by = 10),
+  "discount_rate", seq(0.02, 0.10, by = 0.02),
+  base_params = list(price = 50, cost = 750, discount_rate = 0.06)
+)
+plot(sens2)
+```
+
+
+## `tornado_plot()` — Identifying Key Drivers
+
+### Purpose
+Ranks parameters by their impact on the outcome. The widest bar = most influential parameter.
+
+### Best Practices
+- Choose parameter ranges that reflect **plausible** variation, not arbitrary ±50%.
+- The discount rate is almost always the most influential parameter in long-horizon forest investments.
+
+### Examples
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+tornado <- tornado_plot(
+  my_npv,
+  param_ranges = list(
+    price = c(30, 70),
+    cost = c(500, 1500),
+    discount_rate = c(0.03, 0.09)
+  ),
+  base_params = list(price = 50, cost = 750, discount_rate = 0.06)
+)
+tornado
+plot(tornado)
+```
+
+
+## `breakeven_analysis()` — Finding Critical Values
+
+### Purpose
+Finds the parameter value where the outcome equals a target (default: NPV = 0).
+
+### Use Cases
+- **Practitioner**: "What is the minimum stumpage price that makes this investment worthwhile?"
+- **Researcher**: "What discount rate makes carbon credits equivalent to BAU?"
+
+### Examples
+
+```{r}
+be <- breakeven_analysis(
+  my_npv, "price",
+  base_params = list(price = 50, cost = 750, discount_rate = 0.06),
+  target = 0
+)
+cat("Breakeven stumpage price: $", round(be$breakeven_value, 2), "/unit\n")
+```
+
+### Citations
+- Klemperer, W.D. (1996). Ch. 10.
+- Bettinger, P. et al. (2017). Ch. 8, Sec. 8.4.
+- Wagner, J.E. (2012). *Forestry Economics*. Routledge. Ch. 10.
+
+---
+
+# Complete Worked Example {#sec-example}
+
+This example compares two management scenarios — **carbon credits** vs. **business-as-usual** — using every tool in the package.
+
+```{r}
+# ---- Define scenarios ----
+
+# Scenario 1: Carbon Credits
+carbon <- data.frame(
+  name = c("Planting", "Carbon Credits", "Inventory", "Property Tax",
+           "Validation", "PCT", "Long Rotation Harvest"),
+  amount = c(-750, 4000, -500, -50, -500, -750, 2000),
+  year = c(0, 0, 0, 0, 10, 15, 40),
+  frequency = c("once", "once", "once", "annual", "periodic", "once", "once"),
+  period_length = c(NA, NA, NA, NA, 10, NA, NA)
+)
+
+# Scenario 2: Business as Usual
+bau <- data.frame(
+  name = c("Planting", "Property Tax", "Spraying", "PCT",
+           "Commercial Thinning", "Harvest", "Final Harvest"),
+  amount = c(-750, -50, -275, -800, 2500, 2500, 2500),
+  year = c(0, 0, 5, 12, 20, 30, 40),
+  frequency = c("once", "annual", "once", "once", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA, NA)
+)
+
+# ---- Deterministic Analysis ----
+cat("=== Deterministic Analysis ===\n")
+npv_carbon <- npv_schedule(carbon[, c("amount", "year", "frequency", "period_length")],
+                            0.06, 40)
+npv_bau <- npv_schedule(bau[, c("amount", "year", "frequency", "period_length")],
+                         0.06, 40)
+cat("Carbon NPV:", round(npv_carbon, 2), "\n")
+cat("BAU NPV:", round(npv_bau, 2), "\n")
+
+lev_carbon <- lev_schedule(
+  carbon[, c("amount", "year", "frequency", "period_length")], 0.06, 40)
+lev_bau <- lev_schedule(
+  bau[, c("amount", "year", "frequency", "period_length")], 0.06, 40)
+cat("Carbon LEV:", round(lev_carbon, 2), "\n")
+cat("BAU LEV:", round(lev_bau, 2), "\n")
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+# ---- Cash Flow Visualization ----
+schedule_carbon <- cash_flow_schedule(carbon, 40, 0.06)
+plot(schedule_carbon) + ggplot2::ggtitle("Carbon Credit Scenario Cash Flows")
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+# ---- Sensitivity: Discount Rate ----
+carbon_npv_fn <- function(discount_rate) {
+  npv_schedule(carbon[, c("amount", "year", "frequency", "period_length")],
+               discount_rate, 40)
+}
+bau_npv_fn <- function(discount_rate) {
+  npv_schedule(bau[, c("amount", "year", "frequency", "period_length")],
+               discount_rate, 40)
+}
+
+rates <- seq(0.02, 0.12, by = 0.01)
+carbon_npvs <- sapply(rates, carbon_npv_fn)
+bau_npvs <- sapply(rates, bau_npv_fn)
+plot(rates, carbon_npvs, type = "l", col = "darkgreen", lwd = 2,
+     xlab = "Discount Rate", ylab = "NPV ($)",
+     main = "NPV Sensitivity to Discount Rate", ylim = range(c(carbon_npvs, bau_npvs)))
+lines(rates, bau_npvs, col = "sienna", lwd = 2)
+abline(h = 0, lty = 2)
+legend("topright", c("Carbon", "BAU"), col = c("darkgreen", "sienna"), lwd = 2)
+```
+
+---
+
+# Multi-Product Yield Tables {#sec-yield-tables}
+
+Real forest stands produce multiple products simultaneously. Sawlog volume increases
+with age as trees reach merchantable diameters, pulpwood comes from tops and smaller
+stems, and veneer-quality logs only appear at advanced ages. Each product has a
+different stumpage price. The `yield_table()` function captures this reality.
+
+## Creating a Yield Table
+
+Supply ages, a named list of products (each with volume and price columns), and
+optional units:
+
+```{r}
+ages <- seq(10, 80, by = 10)
+
+yt <- yield_table(
+  ages = ages,
+  products = list(
+    sawlog = data.frame(
+      volume = c(0, 0, 2, 5, 10, 16, 20, 22),
+      price = 254   # $/MBF
+    ),
+    pulp = data.frame(
+      volume = c(5, 12, 18, 22, 24, 25, 25, 24),
+      price = 9     # $/ton
+    )
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+yt
+```
+
+The object stores spline-interpolated volume and value functions for each product,
+allowing continuous optimization over age.
+
+## Visualizing Yield Tables
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+plot(yt, type = "volume")
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+plot(yt, type = "value")
+```
+
+## Optimal Rotation with Multiple Products
+
+`optimal_rotation_mp()` extends the Faustmann model to multi-product stands.
+At any candidate rotation age $T$, total revenue is:
+
+$$R(T) = \sum_{i=1}^{n} V_i(T) \cdot P_i$$
+
+where $V_i(T)$ is the volume of product $i$ at age $T$ and $P_i$ is its price.
+The LEV is then:
+
+$$LEV = \frac{R(T)/(1+r)^T - C_0 - PV(\text{annual costs})}{1 - 1/(1+r)^T} \cdot \frac{1}{(1+r)^T}$$
+
+```{r}
+opt <- optimal_rotation_mp(yt, regen_cost = 750, annual_cost = 50,
+                            discount_rate = 0.06)
+cat("Optimal rotation:", round(opt$optimal_age, 1), "years\n")
+cat("LEV at optimum: $", round(opt$value_at_optimum, 2), "\n")
+cat("\nProduct breakdown at optimal age:\n")
+print(opt$product_detail)
+```
+
+## Comparing Rotation Ages
+
+`rotation_comparison_mp()` tabulates NPV, LEV, and per-product volumes/values
+across a range of ages:
+
+```{r}
+comp <- rotation_comparison_mp(yt, regen_cost = 750, annual_cost = 50,
+                                discount_rate = 0.06, ages = seq(20, 70, by = 5))
+head(comp[, c("age", "total_revenue", "npv", "lev")], 10)
+```
+
+### Best Practices
+
+- Use at least 5-6 age observations per product for reliable spline interpolation
+- Verify that spline-interpolated volumes don't go negative at extreme ages
+  (the function clamps negatives to zero)
+- Include age 0 data only if meaningful; splines extrapolate poorly beyond input range
+- When products shift in dominance across ages (e.g., pulp-dominant young stands
+  transitioning to sawlog-dominant mature stands), the multi-product model correctly
+  captures the crossover
+
+### Limitations
+
+- Prices are treated as known constants (no stochastic prices within yield tables);
+  combine with `monte_carlo()` and `stochastic_prices()` for uncertainty analysis
+- Assumes clear-cut harvest at rotation age; partial harvests or thinning revenues
+  must be modeled via `cash_flow_schedule()`
+
+### References
+
+- Bettinger, P., Boston, K., Siry, J.P., & Grebner, D.L. (2017). *Forest Management
+  and Planning*. 2nd ed. Academic Press. Ch. 3, 8.
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill. Ch. 12.
+- Chang, S.J. (1998). "A generalized Faustmann model for the determination of optimal
+  harvest age." *Canadian Journal of Forest Research* 28(5): 652-659.
+
+---
+
+# Timberland Appraisal & Divestment {#sec-appraisal}
+
+These functions implement the three standard approaches to timberland
+appraisal — income, cost (liquidation), and sales comparison — plus
+decision tools for the hold-vs-sell divestment question.
+
+## `discount_rate_buildup()` — Constructing a Timber Discount Rate
+
+### Purpose
+
+Builds a real discount rate from component risk premia using the
+**build-up method**, the standard practitioner approach for illiquid
+timberland assets (CAPM is inappropriate for non-traded assets).
+
+### Use Cases
+
+- Constructing a defensible discount rate for a timberland appraisal
+- Documenting rate assumptions for institutional investors (TIMOs, REITs)
+- Sensitivity: vary one premium while holding others constant
+
+### Examples
+
+```{r}
+library(forestvalues)
+# Standard timberland discount rate
+dr <- discount_rate_buildup(
+  risk_free       = 0.04,    # 10-yr Treasury
+  inflation_premium = 0.02,  # expected CPI
+  illiquidity_premium = 0.01, # timberland is hard to sell quickly
+  management_risk = 0.005,   # professional management required
+  market_risk     = 0.01     # timber price volatility
+)
+dr$rate       # nominal rate
+dr$real_rate  # real rate (rate - inflation)
+dr$components # named vector of all premia
+```
+
+### References
+
+- Bullard, S.H. & Straka, T.J. (2011). *Basic Concepts in Forest Valuation
+  and Investment Analysis*. 3rd ed. Ch. 3.
+- Wagner, J.E. (2012). *Forestry Economics: A Managerial Approach*. Ch. 5.
+
+
+## `liquidation_value()` — Floor Value of Standing Timber
+
+### Purpose
+
+Computes the immediate harvest value — what the timber is worth if you cut
+everything today. This is the "floor value" and the minimum a willing seller
+should accept.
+
+### Use Cases
+
+- Establishing a price floor before negotiating a timber sale
+- Comparing an offer against what the timber is actually worth
+- Hybrid valuation: floor for the `timberland_value()` hybrid method
+
+### Examples
+
+```{r}
+yt <- yield_table(
+  ages = seq(10, 60, by = 10),
+  products = list(
+    sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
+    pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+
+# 35-year-old stand: log and haul at $150/acre, 5% broker fee
+lv <- liquidation_value(yt, current_age = 35, logging_cost = 150,
+                         sale_cost_pct = 0.05)
+lv$gross_value     # total stumpage
+lv$net_value       # after logging and transaction costs
+lv$product_detail  # per-product breakdown
+```
+
+### References
+
+- Bullard, S.H. & Straka, T.J. (2011). Ch. 8 (Timberland Appraisal).
+
+
+## `mid_rotation_value()` — Valuing a Stand Partway Through a Rotation
+
+### Purpose
+
+Values a stand that is between planting and harvest — the most common
+real-world situation. Decomposes value into (1) PV of anticipated harvest
+revenue and (2) PV of bare land after harvest.
+
+### Formula
+
+$$V_{mid} = \frac{R(T)}{(1+r)^{T-t}} + \frac{LEV}{(1+r)^{T-t}} - PV(\text{annual costs})$$
+
+where $t$ = current age, $T$ = harvest age, $R(T)$ = harvest revenue,
+$LEV$ = bare land value for perpetual management.
+
+### Use Cases
+
+- Buying or selling a mid-rotation stand
+- Insurance valuation of standing timber
+- Estate tax valuation (fair market value of timber)
+
+### Examples
+
+```{r}
+yt <- yield_table(
+  ages = seq(10, 60, by = 10),
+  products = list(
+    sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
+    pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
+  )
+)
+mv <- mid_rotation_value(yt, current_age = 25, discount_rate = 0.06,
+                          regen_cost = 750, annual_cost = 50)
+mv$timber_value     # PV of harvest
+mv$land_value       # PV of bare land (LEV)
+mv$total_value      # timber + land
+mv$years_to_harvest # years until optimal harvest
+```
+
+### References
+
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. Ch. 9.
+
+
+## `comparable_sale()` — Sales Comparison Approach
+
+### Purpose
+
+Adjusts comparable timberland sale prices for differences between the comp
+property and the subject property.
+
+### Use Cases
+
+- Appraisal report: adjusting 3-5 comps to bracket the subject's value
+- Market analysis: understanding which property attributes drive value
+- Paired sales analysis for timberland characteristics
+
+### Examples
+
+```{r}
+# Comparable sold at $2,100/acre. Subject has more timber, worse access.
+cs <- comparable_sale(
+  sale_price_per_acre = 2100,
+  adjustments = list(
+    timber_volume = 350,    # subject has more standing timber
+    access = -125,          # subject has worse road access
+    site_quality = 50,      # slightly better site index
+    time = 100              # market appreciated since sale
+  )
+)
+cs$adjusted_price       # adjusted $/acre for subject
+cs$adjustment_pct       # total adjustment as % (USPAP flags > 25%)
+cs$adjustment_detail    # line-by-line breakdown
+
+# Multiplicative adjustments (for time/market trends)
+comparable_sale(2000,
+  adjustments = list(time = 1.05, location = 0.95),
+  method = "multiplicative")
+```
+
+### References
+
+- Bullard, S.H. & Straka, T.J. (2011). Ch. 8.
+- Wagner, J.E. (2012). *Forestry Economics*. Ch. 11.
+
+
+## `timberland_value()` — Income-Approach Valuation
+
+### Purpose
+
+The capstone valuation function: combines standing timber value, bare land
+value (Faustmann LEV), and pre-merchantable growth into a single property
+valuation. Supports income, liquidation, and hybrid methods.
+
+### Methods
+
+| Method | Formula | When to Use |
+|--------|---------|-------------|
+| `income` | LEV (bare land) or mid-rotation value | Standard income approach |
+| `liquidation` | Harvest now + bare land | Urgent sale, past maturity |
+| `hybrid` | max(income, liquidation) | Most common — highest-and-best-use |
+
+### Examples
+
+```{r}
+yt <- yield_table(
+  ages = seq(10, 60, by = 10),
+  products = list(
+    sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
+    pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+
+# Income approach: bare land (no standing timber)
+tv_bare <- timberland_value(yt, discount_rate = 0.06, regen_cost = 750,
+                             annual_cost = 50, method = "income")
+tv_bare$total_value  # = LEV (bare land value)
+
+# Income approach: 30-year-old stand
+tv_mid <- timberland_value(yt, discount_rate = 0.06, regen_cost = 750,
+                            annual_cost = 50, current_age = 30)
+tv_mid$timber_value  # PV of standing timber
+tv_mid$land_value    # PV of bare land after harvest
+
+# Hybrid: max(income, liquidation) — highest-and-best-use
+tv_hybrid <- timberland_value(yt, discount_rate = 0.06, regen_cost = 750,
+                               current_age = 30, method = "hybrid")
+
+# Override LEV with a market-based land value
+tv_market <- timberland_value(yt, discount_rate = 0.06, current_age = 30,
+                               land_value = 800, method = "liquidation")
+```
+
+### References
+
+- Bullard, S.H. & Straka, T.J. (2011). Ch. 8.
+- Klemperer, W.D. (1996). Ch. 8-9.
+
+
+## `hold_vs_sell()` — The Divestment Decision
+
+### Purpose
+
+Compares holding a timber asset (continuing management) versus selling now.
+Returns a recommendation, the dollar advantage of holding, and the
+breakeven price at which the owner should be indifferent.
+
+### Use Cases
+
+- Evaluating an unsolicited purchase offer
+- TIMO portfolio rebalancing: which tracts to divest?
+- Estate planning: sell timber before or after transfer?
+
+### Examples
+
+```{r}
+yt <- yield_table(
+  ages = seq(10, 60, by = 10),
+  products = list(
+    sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
+    pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+
+# Young stand with lowball offer
+hs <- hold_vs_sell(yt, discount_rate = 0.06, regen_cost = 750,
+                    annual_cost = 50, current_age = 15,
+                    current_offer = 100)
+hs$recommendation   # "hold"
+hs$advantage        # $ benefit of holding over selling
+hs$breakeven_price  # offer price that would make selling worthwhile
+```
+
+
+## `tract_aggregate()` — Property-Level Summary
+
+### Purpose
+
+Combines multiple stand valuations into a tract-level total. Useful for
+properties with heterogeneous stands at different ages and stocking levels.
+
+### Examples
+
+```{r}
+yt <- yield_table(
+  ages = seq(10, 60, by = 10),
+  products = list(
+    sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
+    pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
+  ),
+  product_units = c(sawlog = "mbf", pulp = "ton")
+)
+
+# Two stands at different ages
+val_young <- timberland_value(yt, 0.06, 750, 50, current_age = 15)
+val_mature <- timberland_value(yt, 0.06, 750, 50, current_age = 40)
+
+ta <- tract_aggregate(
+  stand_a = val_young, stand_b = val_mature,
+  acres = c(stand_a = 120, stand_b = 80)
+)
+ta$total_value    # total property value ($)
+ta$per_acre_value # weighted average $/acre
+ta$tract_summary  # per-stand breakdown
+```
+
+---
+
+# Timber Taxation {#sec-tax}
+
+These functions implement U.S. federal timber tax rules under IRC Section 631,
+including capital gains treatment, cost depletion, and the Section 194
+reforestation incentive. All functions are educational tools — consult a
+qualified tax professional for actual filing decisions.
+
+## `timber_tax()` — Core Tax Computation
+
+### Purpose
+
+Computes after-tax timber income under three methods: Section 631(a)
+(owner cuts), Section 631(b) (outright sale), or ordinary income.
+
+### Tax Methods
+
+| Method | IRC Section | Description | Best For |
+|--------|------------|-------------|----------|
+| `631a` | 631(a) | Cutting treated as deemed sale | Owner-operators who cut and sell |
+| `631b` | 631(b) | Outright disposal of standing timber | Lump-sum timber sales |
+| `ordinary` | — | No election; all gain at ordinary rates | Baseline comparison |
+
+### Key Concept: Cost Depletion
+
+When you sell timber, you don't pay tax on the full sale price. You first
+recover your **cost basis** (what you paid for the timber, adjusted for
+prior depletion). Only the gain above basis is taxable.
+
+### Examples
+
+```{r}
+# Landowner sells standing timber: $45,000 revenue, $8,000 basis
+tt <- timber_tax(gross_revenue = 45000, cost_basis = 8000,
+                  holding_period_years = 25, method = "631b")
+tt$depletion_amount  # $8,000 recovered tax-free
+tt$capital_gain      # $37,000 taxed at capital gains rate
+tt$tax_liability     # federal tax
+tt$effective_rate    # effective rate as % of gross
+tt$net_after_tax     # take-home amount
+
+# With state tax and NIIT
+timber_tax(45000, 8000, holding_period_years = 25,
+           method = "631b", state_tax_rate = 0.05, niit = TRUE)
+```
+
+### References
+
+- Siegel, W.C. et al. (2009). *Federal Income Tax on Timber*. GTR-SRS-112.
+- National Timber Tax Website: timbertax.org
+
+
+## `tax_comparison()` — Side-by-Side Method Comparison
+
+### Purpose
+
+Computes tax liability under all three methods for the same harvest and
+identifies which election saves the most money.
+
+### Use Cases
+
+- Consulting forester showing landowner: "631(b) saves you $X,XXX"
+- Evaluating whether the administrative burden of 631(a) is worthwhile
+- Tax planning before harvest season
+
+### Examples
+
+```{r}
+# $45,000 sale, $8,000 basis, held 25 years
+tc <- tax_comparison(45000, 8000, 25)
+tc$best_method          # "631a" or "631b" (both same for long holding)
+tc$savings_vs_ordinary  # dollars saved vs. ordinary income
+tc$recommendation       # plain-English recommendation
+tc$methods              # full comparison table
+```
+
+
+## `depletion_schedule()` — Multi-Harvest Basis Tracking
+
+### Purpose
+
+Tracks cost basis depletion over multiple harvests. The IRS requires
+depletion to be recalculated before each harvest because the remaining
+basis and volume change.
+
+### Formula
+
+$$\text{Depletion rate} = \frac{\text{Adjusted basis}}{\text{Remaining volume}}$$
+$$\text{Depletion} = \text{Rate} \times \text{Volume harvested}$$
+
+### Use Cases
+
+- Multi-year harvest plans (e.g., 50 acres/year over 10 years)
+- Estate with multiple timber tracts and different basis accounts
+- CPA/forester preparing Schedule D timber entries
+
+### Examples
+
+```{r}
+# 500-acre tract: 10,000 MBF total, $600K timber basis
+# Harvest 3 times over 15 years
+harvests <- data.frame(
+  year = c(2020, 2025, 2035),
+  volume = c(2500, 3000, 4500),
+  revenue = c(600000, 780000, 1200000)
+)
+ds <- depletion_schedule(initial_basis = 600000, initial_volume = 10000,
+                          harvests = harvests)
+ds$schedule          # per-harvest depletion rate, amount, taxable gain
+ds$total_depleted    # total basis recovered
+ds$remaining_basis   # basis left for future harvests
+```
+
+### References
+
+- Haney, H.L. Jr. et al. (2001). *Forest Landowners' Guide to the Federal
+  Income Tax*. USDA Agriculture Handbook 718.
+
+
+## `after_tax_npv()` — After-Tax Investment Analysis
+
+### Purpose
+
+Wraps `npv()` with timber tax treatment applied to each cash flow.
+Revenue flows are taxed under the specified 631 method; cost flows are
+treated as deductible expenses that reduce ordinary income tax.
+
+### Use Cases
+
+- "What does this plantation actually earn after taxes?"
+- Comparing pre-tax vs. after-tax returns on a rotation investment
+- Evaluating how different 631 elections affect NPV
+
+### Examples
+
+```{r}
+# Plantation: plant now ($750), annual cost ($50), harvest at year 30 ($8,500)
+cf <- c(-750, rep(-50, 29), 8500)
+times <- 0:30
+result <- after_tax_npv(cf, times, discount_rate = 0.06,
+                         cost_basis = 750, tax_method = "631b",
+                         holding_period = 30)
+result$npv_pretax     # pre-tax NPV
+result$npv_after_tax  # after-tax NPV
+result$tax_impact     # NPV reduction from taxes
+result$effective_rate # overall effective tax rate on revenue
+```
+
+
+## `reforestation_deduction()` — Section 194 Tax Incentive
+
+### Purpose
+
+Models the IRC Section 194 reforestation tax incentive: the first $10,000
+of qualifying reforestation expenses is deducted immediately, with the
+remainder amortized over 84 months (7 tax years).
+
+### How It Works
+
+1. **Year 1:** Deduct up to $10,000 directly + 1/14 of excess (half-year)
+2. **Years 2-7:** Deduct 1/7 of excess per year (full-year)
+3. **Year 8:** Deduct final 1/14 of excess (half-year)
+
+### Use Cases
+
+- Planning reforestation timing to maximize tax benefits
+- Showing landowners the true after-subsidy cost of reforestation
+- Cash flow planning: when do the tax savings arrive?
+
+### Examples
+
+```{r}
+# $45,000 reforestation cost in 2025
+rd <- reforestation_deduction(total_cost = 45000, tax_year = 2025)
+rd$year_1_deduction       # $10,000 (capped)
+rd$total_tax_savings      # total savings over 8 tax years
+rd$effective_subsidy_rate # savings as % of cost (~24% at 24% rate)
+rd$amortization_schedule  # year-by-year deduction and savings
+```
+
+### References
+
+- IRS Publication 535, Chapter 7 (Reforestation Costs).
+- Haney, H.L. Jr. et al. (2001). Ch. 5.
+
+---
+
+# Excel Export {#sec-excel}
+
+The `export_excel()` function creates formatted Excel workbooks designed for
+practitioners who are comfortable with spreadsheets. Workbooks contain **live
+Excel formulas** — change a parameter cell and results update automatically.
+
+The function can generate up to **10 sheets** depending on what data you
+provide. Three of those sheets (Rotation Analysis, Cash Flow, Financial
+Metrics) use native Excel formulas that recalculate live. The others
+(Sensitivity, Break-Even, Scenarios, Charts) are R-computed snapshots —
+re-export the workbook to update them.
+
+## Key Features
+
+- **Parameter cells** (highlighted yellow) are unlocked for editing: discount rate,
+  regeneration cost, annual cost, product prices
+- **Result cells** (formulas, computed values) are locked to prevent accidental changes
+- **Live formulas** reference the Parameters sheet, so changing one value cascades
+  through all calculations
+- **Conditional formatting** — color scales on LEV/NPV, data bars on cumulative NPV,
+  red/green on costs/revenues
+- **Native Excel functions** — IRR(), NPV(), MIRR(), PMT() on the Financial Metrics sheet
+- **Worksheet protection** is enabled (no password) so locked cells can't be
+  accidentally overwritten
+
+## Data Requirements
+
+`export_excel()` accepts two primary data inputs. You can provide either or both:
+**one of these must be non-NULL.**
+
+### 1. Yield Table (`yield_tbl`)
+
+A `yield_table` object created with `yield_table()`. This is a multi-product
+timber yield schedule specifying volume by age and product.
+
+**Required structure:**
+
+```{r}
+#| eval: false
+yt <- yield_table(
+  ages = seq(10, 80, by = 10),        # evaluation ages (years)
+  products = list(
+    sawlog = data.frame(
+      volume = c(0, 0, 2, 5, 10, 16, 20, 22),  # volume per acre at each age
+      price = 254                                 # $/MBF stumpage price
+    ),
+    pulpwood = data.frame(
+      volume = c(5, 12, 18, 22, 24, 25, 25, 24),
+      price = 9                                   # $/ton
+    )
+  ),
+  product_units = c(sawlog = "mbf", pulpwood = "ton")  # optional labels
+)
+```
+
+**When provided, generates these sheets:** Yield Table, Rotation Analysis,
+Sensitivity, Break-Even, Scenarios, Charts (LEV curve, product mix, tornado).
+
+### 2. Management Schedule (`schedule`)
+
+A `data.frame` describing management activities over time.
+
+**Required columns:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `name` | character | Activity label (e.g., "Planting", "Tax") |
+| `amount` | numeric | Dollar amount (negative = cost, positive = revenue) |
+| `year` | numeric | Year the activity occurs |
+| `frequency` | character | `"once"` or `"annual"` |
+| `period_length` | numeric | Duration for annual items, or `NA` |
+
+**Example:**
+
+```{r}
+#| eval: false
+activities <- data.frame(
+  name = c("Planting", "Annual Tax", "PCT", "Thinning", "Final Harvest"),
+  amount = c(-750, -50, -200, 2500, 8500),
+  year = c(0, 0, 8, 25, 45),
+  frequency = c("once", "annual", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA)
+)
+```
+
+**When provided, generates these sheets:** Cash Flow, Financial Metrics.
+
+## Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `discount_rate` | `0.06` | Real discount rate (as decimal, e.g., 0.06 = 6%) |
+| `regen_cost` | `0` | Regeneration cost ($/acre) |
+| `annual_cost` | `0` | Annual carrying cost — taxes, insurance, etc. ($/acre/yr) |
+| `time_horizon` | `80` | Analysis horizon in years |
+| `file` | `"forest_analysis.xlsx"` | Output file path (must end `.xlsx`) |
+| `title` | `"Forest Economics Analysis"` | Header title in workbook |
+| `author` | `""` | Author name in header |
+| `sensitivity_rates` | `seq(0.02, 0.12, 0.01)` | Discount rates for sensitivity table |
+| `sensitivity_prices` | `NULL` | Price multipliers (NULL = 50%–150% in 10% steps) |
+| `include_charts` | `TRUE` | Embed ggplot2 charts as images? |
+
+## Basic Usage
+
+### Yield table only — rotation analysis focus
+
+```{r}
+#| eval: false
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             annual_cost = 50, time_horizon = 80,
+             file = "stand_analysis.xlsx",
+             title = "Northern Hardwood Analysis",
+             author = "J. Forester")
+```
+
+**Produces 8 sheets:** Parameters, Yield Table, Rotation Analysis, Sensitivity,
+Break-Even, Scenarios, Charts, Summary.
+
+### Schedule only — cash flow analysis focus
+
+```{r}
+#| eval: false
+export_excel(schedule = activities, discount_rate = 0.06,
+             time_horizon = 45, file = "harvest_plan.xlsx")
+```
+
+**Produces 5 sheets:** Parameters, Cash Flow, Financial Metrics, Charts, Summary.
+
+### Combined — full analysis
+
+```{r}
+#| eval: false
+export_excel(yt, schedule = activities, discount_rate = 0.06,
+             regen_cost = 750, annual_cost = 50, time_horizon = 80,
+             file = "full_analysis.xlsx",
+             title = "Township 7 Range 10 — Stand Analysis",
+             author = "Ryan Smith")
+```
+
+**Produces all 10 sheets.**
+
+### Custom sensitivity grid
+
+```{r}
+#| eval: false
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             file = "sensitivity_focus.xlsx",
+             sensitivity_rates = seq(0.03, 0.10, by = 0.005),
+             sensitivity_prices = seq(0.6, 1.4, by = 0.05))
+```
+
+### With tax analysis
+
+```{r}
+#| eval: false
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             annual_cost = 50, file = "timber_with_tax.xlsx",
+             tax_params = list(
+               gross_revenue = 45000,
+               cost_basis = 8000,
+               holding_period = 25,
+               marginal_rate = 0.24,
+               cap_gains_rate = 0.15,
+               state_rate = 0.05,
+               reforestation_cost = 45000
+             ))
+```
+
+This adds a **Tax Analysis** sheet with:
+
+- Editable tax parameters (yellow cells)
+- Side-by-side Section 631(a), 631(b), and ordinary income comparison
+- Section 194 reforestation deduction amortization schedule
+- Tax method reference guide
+
+## Best Practices
+
+- Use descriptive `title` and `author` — they appear in the workbook header
+  and Summary sheet
+- Share the workbook alongside your report so colleagues can test "what-if"
+  scenarios by editing the yellow parameter cells
+- Use `include_charts = FALSE` on headless servers or automated pipelines
+  where no graphics device is available
+- Keep `sensitivity_rates` and `sensitivity_prices` to reasonable ranges
+  (10–15 values each) to avoid very large spreadsheets
+
+## Limitations
+
+- Sensitivity, Break-Even, Scenarios, and Charts are **R-computed snapshots**.
+  They do NOT update when you change Parameters in Excel. Re-export from R to refresh.
+- Product breakdown at the optimal rotation is static because optimal rotation
+  requires numerical optimization that Excel formulas cannot replicate.
+- Requires the `openxlsx` package (`install.packages("openxlsx")`)
+- Charts require `ggplot2` and an active graphics device.
+- Very large yield tables (hundreds of ages) or dense sensitivity grids
+  may produce large files.
+
+---
+
+# Function Reference {#sec-reference}
+
+## Core Financial Functions
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `discount()` | time-value | PV of future amount | @sec-tvm |
+| `compound()` | time-value | FV of present amount | @sec-tvm |
+| `npv()` | npv | Net present value | @sec-npv |
+| `npv_schedule()` | npv | NPV from management schedule | @sec-npv |
+| `incremental_npv()` | npv | Compare two alternatives | @sec-npv |
+| `irr()` | irr | Internal rate of return | @sec-irr |
+| `mirr()` | irr | Modified IRR | @sec-irr |
+| `lev()` | lev | Land expectation value (Faustmann) | @sec-lev |
+| `bare_land_value()` | lev | Alias for `lev()` | @sec-lev |
+| `lev_schedule()` | lev | LEV from management schedule | @sec-lev |
+
+## Rotation & Yield Analysis
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `optimal_rotation()` | rotation | Find optimal rotation age | @sec-rotation |
+| `rotation_comparison()` | rotation | Compare rotation ages | @sec-rotation |
+| `yield_table()` | yield-tables | Multi-product yield table | @sec-yield-tables |
+| `optimal_rotation_mp()` | yield-tables | Multi-product optimal rotation | @sec-yield-tables |
+| `rotation_comparison_mp()` | yield-tables | Multi-product rotation comparison | @sec-yield-tables |
+
+## Valuation & Income
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `stumpage_value()` | stumpage | Timber valuation | @sec-stumpage |
+| `create_price_table()` | stumpage | Build price table | @sec-stumpage |
+| `update_prices()` | stumpage | Inflation adjustment | @sec-stumpage |
+| `cash_flow_schedule()` | cash-flow | Year-by-year cash flows | @sec-income |
+| `project_income()` | cash-flow | Income from yield + prices | @sec-income |
+| `annualize()` | cash-flow | Equivalent annual annuity | @sec-income |
+
+## Risk & Sensitivity
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `monte_carlo()` | stochastic | Monte Carlo simulation | @sec-stochastic |
+| `stochastic_prices()` | stochastic | GBM/OU price paths | @sec-stochastic |
+| `simulate_yield()` | stochastic | Stochastic yield variation | @sec-stochastic |
+| `risk_metrics()` | stochastic | VaR, P(loss), ES | @sec-stochastic |
+| `sensitivity_1way()` | sensitivity | One-way sensitivity | @sec-sensitivity |
+| `sensitivity_2way()` | sensitivity | Two-way sensitivity | @sec-sensitivity |
+| `tornado_plot()` | sensitivity | Tornado diagram | @sec-sensitivity |
+| `breakeven_analysis()` | sensitivity | Find breakeven values | @sec-sensitivity |
+
+## Appraisal & Divestment
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `discount_rate_buildup()` | appraisal | Build-up discount rate | @sec-appraisal |
+| `liquidation_value()` | appraisal | Floor value of standing timber | @sec-appraisal |
+| `mid_rotation_value()` | appraisal | Value mid-rotation stand | @sec-appraisal |
+| `comparable_sale()` | appraisal | Sales comparison adjustment | @sec-appraisal |
+| `timberland_value()` | appraisal | Income-approach valuation | @sec-appraisal |
+| `hold_vs_sell()` | appraisal | Divestment decision analysis | @sec-appraisal |
+| `tract_aggregate()` | appraisal | Multi-stand property summary | @sec-appraisal |
+
+## Timber Taxation
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `timber_tax()` | timber-tax | IRC Section 631 tax computation | @sec-tax |
+| `tax_comparison()` | timber-tax | Compare 631(a)/631(b)/ordinary | @sec-tax |
+| `depletion_schedule()` | timber-tax | Multi-harvest basis tracking | @sec-tax |
+| `after_tax_npv()` | timber-tax | After-tax NPV with 631 treatment | @sec-tax |
+| `reforestation_deduction()` | timber-tax | Section 194 tax incentive | @sec-tax |
+
+## Export
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `export_excel()` | excel-export | Formatted Excel workbook | @sec-excel |
+
+## Example Datasets
+
+| Function | Family | Returns | Section |
+|----------|--------|---------|---------|
+| `pine_yields()` | datasets | Loblolly pine yield table (SE U.S.) | @sec-appendix-workflows |
+| `hardwood_yields()` | datasets | Northern hardwood yield table (NE U.S.) | @sec-appendix-workflows |
+| `pine_schedule()` | datasets | Pine plantation management schedule | @sec-appendix-workflows |
+| `timber_sales()` | datasets | 3 timber sales for tax examples | @sec-appendix-workflows |
+| `pine_harvests()` | datasets | Multi-harvest depletion example | @sec-appendix-workflows |
+| `comparable_sales_data()` | datasets | 4 comparable timberland sales | @sec-appendix-workflows |
+| `rate_components()` | datasets | Discount rate component benchmarks | @sec-appendix-workflows |
+
+---
+
+# Full Citation List {#sec-citations}
+
+## Textbooks
+
+- Amacher, G.S., Ollikainen, M., & Koskela, E. (2009). *Economics of Forest Resources*. MIT Press.
+- Bettinger, P., Boston, K., Siry, J.P., & Grebner, D.L. (2017). *Forest Management and Planning*. 2nd ed. Academic Press.
+- Bullard, S.H. & Straka, T.J. (2011). *Basic Concepts in Forest Valuation and Investment Analysis*. 3rd ed.
+- Cubbage, F.W., O'Laughlin, J., & Bullock, C.S. (1993). *Forest Resource Policy*. Wiley.
+- Dixit, A.K. & Pindyck, R.S. (1994). *Investment Under Uncertainty*. Princeton University Press.
+- Gregory, G.R. (1987). *Resource Economics for Foresters*. Wiley.
+- Johansson, P.O. & Löfgren, K.G. (1985). *The Economics of Forestry and Natural Resources*. Blackwell.
+- Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill.
+- Pearse, P.H. (1990). *Introduction to Forestry Economics*. UBC Press.
+- Wagner, J.E. (2012). *Forestry Economics: A Managerial Approach*. Routledge.
+
+## Tax & Appraisal References
+
+- Cascio, A.J. & Clutter, M.L. (2008). "Risk and required return assessments of equity timberland investments in the United States." *Forest Products Journal* 58(10): 61-70.
+- Haney, H.L. Jr., Hoover, W.L., Siegel, W.C., & Greene, J.L. (2001). *Forest Landowners' Guide to the Federal Income Tax*. USDA Forest Service Agriculture Handbook 718.
+- Hoover, W.L. (2017). *Timber Tax Management for CPAs*. Purdue Extension.
+- Siegel, W.C., Haney, H.L. Jr., & Greene, J.L. (2009). *Federal Income Tax on Timber: A Key to Your Most Frequently Asked Questions*. USDA Forest Service GTR-SRS-112.
+- IRS Publication 535 (Business Expenses), Chapter 7 — Reforestation Costs.
+- National Timber Tax Website: [timbertax.org](https://timbertax.org)
+
+## Seminal Papers
+
+- Boulding, K.E. (1935). "The theory of a single investment." *Quarterly Journal of Economics* 49(3): 475-494.
+- Brazee, R.J. (2001). "The Faustmann Formula: Fundamental to Forest Economics 150 Years After Publication." *Forest Science* 47(4): 441-442.
+- Brazee, R.J. & Mendelsohn, R. (1988). "Timber harvesting with fluctuating prices." *Forest Science* 34(2): 359-372.
+- Chang, S.J. (1998). "A generalized Faustmann model for the determination of optimal harvest age." *Canadian Journal of Forest Research* 28(5): 652-659.
+- Faustmann, M. (1849). "Berechnung des Werthes welchen Waldboden sowie noch nicht haubare Holzbestaende fuer die Waldwirthschaft besitzen." *Allgemeine Forst- und Jagd-Zeitung* 25: 441-455.
+- Hazen, G.B. (2003). "A new perspective on multiple internal rates of return." *The Engineering Economist* 48(1): 31-51.
+- Insley, M. (2002). "A real options approach to the valuation of a forestry investment." *JEEM* 44(3): 471-492.
+- Newman, D.H. (2002). "Forestry's golden rule and the development of the optimal forest rotation literature." *Journal of Forest Economics* 8(1): 5-27.
+- Plantinga, A.J. (1998). "The optimal timber rotation: an option value approach." *Forest Science* 44(2): 192-202.
+- Pressler, M.R. (1860). "Aus der Holzzuwachlehre." *Allgemeine Forst- und Jagd-Zeitung* 36: 173-191.
+- Samuelson, P.A. (1976). "Economics of forestry in an evolving society." *Economic Inquiry* 14(4): 466-492.
+- Thomson, T.A. (1992). "Optimal forest rotation when stumpage prices follow a diffusion process." *Land Economics* 68(3): 329-342.
+- Yoshimoto, A. & Shoji, I. (1998). "Searching for an optimal rotation age under stochastic log prices." *European Journal of Operational Research* 105(1): 100-112.
+
+---
+
+# Appendix A: Excel Export — Sheet-by-Sheet Reference {#sec-appendix-excel .unnumbered}
+
+This appendix provides a detailed reference for every sheet that `export_excel()`
+can produce, including what data is required to trigger each sheet, what each cell
+contains, how to use it, and practical worked examples.
+
+## Sheet Overview {.unnumbered}
+
+| # | Sheet | Requires | Type | Auto-updates? |
+|---|-------|----------|------|---------------|
+| 1 | Parameters | Always | Editable | N/A — this IS the source |
+| 2 | Yield Table | `yield_tbl` | Editable + Formulas | Yes (values = vol x price) |
+| 3 | Rotation Analysis | `yield_tbl` | All Formulas | Yes (references Parameters) |
+| 4 | Cash Flow | `schedule` | Formulas | Yes (references Parameters) |
+| 5 | Financial Metrics | `schedule` | Excel Native Functions | Yes (IRR, NPV, etc.) |
+| 6 | Sensitivity | `yield_tbl` | R-computed | No — re-export to update |
+| 7 | Break-Even | `yield_tbl` | R-computed | No — re-export to update |
+| 8 | Scenarios | `yield_tbl` | R-computed | No — re-export to update |
+| 9 | Charts | `yield_tbl` or `schedule` | Embedded images | No — re-export to update |
+| 10 | Tax Analysis | `tax_params` | R-computed | No — re-export to update |
+| 11 | Summary | Always | Mixed | Partially (linked params update) |
+
+## A.1 Parameters Sheet {.unnumbered}
+
+**Always created.** This is the single source of truth. Every formula in the
+workbook references cells on this sheet.
+
+### Cell Map {.unnumbered}
+
+| Cell | Contents | Editable? |
+|------|----------|-----------|
+| B8 | Discount rate (as decimal, e.g. 0.06) | Yes (yellow, %) |
+| B9 | Regeneration cost ($/acre) | Yes (yellow) |
+| B10 | Annual cost ($/acre/yr) | Yes (yellow) |
+| B11 | Time horizon (years) | Yes (yellow) |
+| B14 | First product price | Yes (yellow) |
+| B15 | Second product price | Yes (yellow) |
+| B16+ | Additional product prices | Yes (yellow) |
+
+### How to Use {.unnumbered}
+
+1. Open the workbook and go to the **Parameters** sheet
+2. Change any yellow cell (e.g., set B8 to `0.08` to test an 8% rate)
+3. Switch to Rotation Analysis or Cash Flow — results update instantly
+4. The Cell Reference Guide at the bottom shows which cell controls what
+
+### Use Cases {.unnumbered}
+
+- **"What if the discount rate rises to 8%?"** — change B8 and watch LEV drop
+- **"What if stumpage prices increase 20%?"** — multiply B14 by 1.2
+- **"How sensitive is the result to annual taxes?"** — try doubling B10
+
+## A.2 Yield Table Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Displays volume-by-age data for each product. Volume cells are editable (yellow);
+value cells are formulas (`= volume * Parameters price`). Includes product
+percentage columns showing each product's share of total value at each age.
+
+### Layout {.unnumbered}
+
+| Column | Contents |
+|--------|----------|
+| A | Age (years) |
+| B | Product 1 Volume (editable) |
+| C | Product 1 Value = B * Parameters!$B$14 |
+| D | Product 2 Volume (editable) |
+| E | Product 2 Value = D * Parameters!$B$15 |
+| ... | Additional products |
+| N | Total Value = sum of all product values |
+| N+1 | Product 1 % of total |
+| N+2 | Product 2 % of total |
+
+### How to Use {.unnumbered}
+
+- Edit volumes in yellow cells to match your stand inventory data
+- Values recalculate automatically when you change volumes OR prices on Parameters
+- Percentage columns help identify when the product mix shifts (e.g., when sawlog
+  value exceeds pulpwood)
+
+### Data Required {.unnumbered}
+
+```{r}
+#| eval: false
+# Minimum: ages and at least one product with volume and price
+yt <- yield_table(
+  ages = seq(10, 60, by = 5),
+  products = list(
+    timber = data.frame(volume = c(0, 0, 2, 5, 8, 12, 16, 19, 21, 22, 22),
+                        price = 200)
+  )
+)
+```
+
+## A.3 Rotation Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Computes NPV and LEV at every yield table age using full Excel formula chains.
+No R values are hard-coded — everything recalculates live.
+
+### Columns {.unnumbered}
+
+| Column | Formula |
+|--------|---------|
+| A | Age |
+| B | Total Revenue (linked from Yield Table) |
+| C | PV Revenue = `B/(1+rate)^A` |
+| D | PV Annual Cost = `annual * ((1+r)^A - 1) / (r*(1+r)^A)` |
+| E | Rotation NPV = `C - regen - D` |
+| F | LEV = `E * (1+r)^A / ((1+r)^A - 1)` |
+| G | NPV Rank (1 = best, via `RANK()`) |
+| H | LEV Rank |
+
+### Visual Features {.unnumbered}
+
+- **3-color scale** on NPV and LEV columns (red = low, yellow = mid, green = high)
+- **Data bars** on LEV Rank column
+- **Summary section** below the table: `INDEX/MATCH` formulas find the best rotation
+  age and maximum LEV automatically
+
+### Use Cases {.unnumbered}
+
+- **Determining optimal Faustmann rotation** — look at the LEV column; the green
+  cell with Rank = 1 is your answer
+- **Comparing financial vs biological rotation** — NPV rank shows maximum single-rotation
+  return; LEV rank shows infinite-horizon optimum
+- **Exploring how the optimal rotation shifts** — change the discount rate on Parameters
+  and watch the green highlight move
+
+## A.4 Cash Flow Sheet {.unnumbered}
+
+**Requires:** `schedule` argument.
+
+Expands management activities into a year-by-year schedule with formula-based
+discounting.
+
+### Layout {.unnumbered}
+
+**Top section:** Management Activities table (amounts are editable in yellow).
+
+**Bottom section:** Year-by-year schedule:
+
+| Column | Contents |
+|--------|----------|
+| A | Year |
+| B | Cash Flow (nominal, from schedule expansion) |
+| C | Cumulative nominal (running sum formula) |
+| D | Discount Factor = `1/(1+rate)^year` |
+| E | Discounted CF = `B * D` |
+| F | Cumulative NPV (running sum of E) |
+| G | % of Total NPV = `F / |final F|` |
+
+### Visual Features {.unnumbered}
+
+- **Red/green conditional formatting** on cash flows (costs red, revenues green)
+- **Data bars** on Cumulative NPV column
+- **Summary below the table:** Total NPV, Total Undiscounted, Payback Period (via
+  `INDEX/MATCH` finding first year where cumulative NPV >= 0)
+
+### Data Required {.unnumbered}
+
+```{r}
+#| eval: false
+# Must have columns: name, amount, year, frequency, period_length
+activities <- data.frame(
+  name = c("Planting", "Annual Tax", "Pre-commercial Thin",
+           "Commercial Thin", "Final Harvest"),
+  amount = c(-750, -50, -200, 2500, 8500),
+  year = c(0, 0, 8, 25, 45),
+  frequency = c("once", "annual", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA)
+)
+```
+
+### Use Cases {.unnumbered}
+
+- **Presenting a management plan to a landowner** — the year-by-year view shows
+  exactly when costs occur and when revenue comes in
+- **Estimating when the investment breaks even** — the payback period formula
+  at the bottom tells you
+- **Adjusting harvest timing** — edit the year column in the activities table
+  and re-export
+
+## A.5 Financial Metrics Sheet {.unnumbered}
+
+**Requires:** `schedule` argument.
+
+Uses **native Excel financial functions** for live computation. Change the
+discount rate on Parameters and all metrics recalculate automatically.
+
+### Metrics Computed {.unnumbered}
+
+| Metric | Excel Formula | Accept Criterion |
+|--------|---------------|------------------|
+| **IRR** | `IRR(cash_flows)` | > discount rate |
+| **NPV** | `Year0 + NPV(rate, year1..n)` | > 0 |
+| **MIRR** | `MIRR(cash_flows, rate, rate)` | > discount rate |
+| **Benefit-Cost Ratio** | `SUMPRODUCT(positive PVs) / ABS(SUMPRODUCT(negative PVs))` | > 1.0 |
+| **Profitability Index** | `NPV / PV(costs)` | > 0 |
+| **EAA** | `PMT(rate, horizon, -NPV)` | > 0 |
+| **Simple Payback** | `MATCH(first cumulative >= 0)` | Lower = better |
+
+### Layout {.unnumbered}
+
+- **Left side:** Annual Cash Flow Series (year + cash flow for each year, 0 to T)
+- **Right side:** Metrics panel with formula, result, and explanatory note
+- **Bottom:** Decision Criteria Guide table
+
+### Use Cases {.unnumbered}
+
+- **Investment committee presentation** — IRR and B/C ratio are the metrics
+  most committees want to see
+- **Comparing mutually exclusive projects** — EAA normalizes projects with
+  different time horizons into an annual equivalent
+- **"Does this beat our cost of capital?"** — compare IRR to your required
+  rate of return directly in the spreadsheet
+
+## A.6 Sensitivity Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Three R-computed sensitivity tables with conditional formatting.
+
+### Table 1: LEV vs Discount Rate x Price Multiplier {.unnumbered}
+
+A two-way data table showing LEV at every combination of discount rate and
+price level (50%–150% of base).
+
+- **Rows:** discount rates (default: 2%–12% in 1% steps)
+- **Columns:** price multipliers (default: 50%–150% in 10% steps)
+- **Color scale:** red (negative LEV) → yellow (breakeven) → green (profitable)
+- Base case row and column are highlighted with standard green headers
+
+### Table 2: Optimal Rotation Age vs Discount Rate x Price {.unnumbered}
+
+Same grid layout but showing optimal rotation age at each combination.
+
+- **Color scale:** blue (short rotation) → yellow → orange (long rotation)
+- Reveals how higher rates push rotations shorter and higher prices can
+  push them longer
+
+### Table 3: LEV vs Regeneration Cost (One-Way) {.unnumbered}
+
+Shows LEV and optimal rotation as regen cost varies from $0 to 3x the base value.
+
+- **Data bars** on LEV column
+- **% Change from base** column shows marginal impact
+- Base case row highlighted
+
+### Customizing the Grid {.unnumbered}
+
+```{r}
+#| eval: false
+# Finer resolution on rates, narrower price range
+export_excel(yt, discount_rate = 0.06, regen_cost = 750,
+             file = "detailed_sensitivity.xlsx",
+             sensitivity_rates = seq(0.03, 0.10, by = 0.005),
+             sensitivity_prices = seq(0.7, 1.3, by = 0.05))
+```
+
+### Use Cases {.unnumbered}
+
+- **Risk assessment** — identify which combinations of rate and price yield
+  negative LEV (the "red zone")
+- **Presenting to stakeholders** — the color-coded grid is immediately
+  intuitive; green = good, red = bad
+- **Choosing a discount rate** — see how much the answer changes across
+  plausible rates
+
+## A.7 Break-Even Analysis Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Three tables answering "what's the minimum/maximum this parameter can be before
+the investment loses money?"
+
+### Table 1: Break-Even Stumpage Price {.unnumbered}
+
+At each rotation age:
+
+| Column | Contents |
+|--------|----------|
+| Rotation Age | Age in years |
+| Revenue at Harvest | Total stumpage value from yield curve |
+| NPV at Base Price | NPV using current parameters |
+| Break-Even Price Mult. | `(costs * (1+r)^T) / revenue` — the minimum price as a fraction of current |
+| Break-Even Price ($) | Multiplier x first product's base price |
+| Margin of Safety | `1 - multiplier` — how far price can fall before NPV = 0 |
+
+Color scale on Margin of Safety: green = large cushion, red = thin margin.
+
+### Table 2: Break-Even Discount Rate (IRR) {.unnumbered}
+
+At each rotation age, solves for the rate that makes single-rotation NPV = 0
+using `uniroot()`. This is the single-rotation IRR.
+
+- Shows "vs Base Rate" spread (IRR minus your discount rate)
+- Higher spread = more cushion against rate increases
+
+### Table 3: Maximum Affordable Costs {.unnumbered}
+
+At each rotation age:
+
+- **Max Regen Cost** — highest planting cost that still yields NPV >= 0
+  (holding annual cost constant)
+- **Max Annual Cost** — highest annual cost sustainable (holding regen constant)
+- **Max Total PV Cost** — the PV of revenue, which is the absolute ceiling
+  for combined costs
+
+### Use Cases {.unnumbered}
+
+- **Bid price determination** — the break-even price tells you the floor;
+  bid above that
+- **Budget planning** — max affordable costs tell you how much you can spend
+  on site prep, planting, management
+- **Margin of safety communication** — tell a landowner "prices can fall 35%
+  before this investment loses money"
+
+## A.8 Scenario Comparison Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` argument.
+
+Four side-by-side scenarios with editable parameters and R-computed results.
+
+### Pre-Built Scenarios {.unnumbered}
+
+| Scenario | Rate | Regen Cost | Annual Cost | Price |
+|----------|------|-----------|-------------|-------|
+| **Base Case** | Your input | Your input | Your input | 100% |
+| **Optimistic** | Same | -20% | -10% | +20% |
+| **Pessimistic** | +2 ppt | +30% | +20% | -25% |
+| **Custom** | Your input | Your input | Your input | 100% |
+
+The Optimistic, Pessimistic, and Custom scenario parameters are **editable**
+(yellow cells). Edit them in Excel to define your own scenarios.
+
+### Results Section {.unnumbered}
+
+For each scenario:
+
+- Optimal Rotation (years)
+- LEV at Optimum ($)
+- Revenue at Optimum ($)
+- NPV at Optimum ($)
+- Data bars on LEV row for visual comparison
+
+### Product Breakdown Section {.unnumbered}
+
+Shows each product's dollar value at the optimal rotation for each scenario,
+so you can see how the product mix shifts under different assumptions.
+
+### Use Cases {.unnumbered}
+
+- **Presenting to a board or committee** — "here's what happens under
+  optimistic, pessimistic, and our base case"
+- **Stress testing** — the pessimistic scenario answers "how bad could it get?"
+- **Custom analysis** — edit the Custom column to test any combination of
+  parameters
+
+## A.9 Charts Sheet {.unnumbered}
+
+**Requires:** `yield_tbl` or `schedule` argument. Set `include_charts = TRUE`
+(the default). Requires an active graphics device (not available on all
+headless servers).
+
+### Chart 1: LEV and NPV vs Rotation Age {.unnumbered}
+
+- Solid green line = LEV, dashed blue line = NPV
+- Red vertical line marks the optimal (max LEV) rotation age
+- Subtitle shows the discount rate, regen cost, and annual cost
+- **Read it:** The peak of the green line is your Faustmann-optimal rotation
+
+### Chart 2: Product Value Composition by Age {.unnumbered}
+
+- Stacked area chart showing each product's dollar contribution over time
+- Colors from `Set2` palette
+- **Read it:** The crossover point where higher-value products dominate tells you
+  when the stand "matures" economically
+
+### Chart 3: Cash Flow Timeline {.unnumbered}
+
+- Bars = nominal cash flows (green = revenue, red = cost)
+- Purple line = cumulative NPV
+- **Read it:** Where the purple line crosses zero is the discounted payback point
+
+### Chart 4: Tornado Diagram {.unnumbered}
+
+- Horizontal bars showing LEV sensitivity to each parameter (+/- 25%)
+- Vertical red dashed line = base case LEV
+- Parameters sorted by impact (widest bar at top)
+- **Read it:** The widest bar is the parameter that matters most. If discount rate
+  dominates, the investment is rate-sensitive; if stumpage price dominates,
+  market risk is the key concern
+
+### Disabling Charts {.unnumbered}
+
+```{r}
+#| eval: false
+# For automated pipelines or headless servers
+export_excel(yt, discount_rate = 0.06, file = "no_charts.xlsx",
+             include_charts = FALSE)
+```
+
+## A.10 Summary Sheet {.unnumbered}
+
+**Always created.** Provides a one-page executive overview.
+
+### Contents {.unnumbered}
+
+1. **Header** — title, author, date
+2. **Analysis Parameters** — linked to Parameters sheet via formulas (auto-update)
+3. **Product Prices** — linked to Parameters sheet
+4. **Key Results** (R-computed) — optimal rotation, max LEV, revenue at optimum,
+   product breakdown table, schedule NPV
+5. **Workbook Guide** — table describing each sheet's purpose
+6. **Notes** — which sheets auto-update vs which are snapshots
+
+### Use Cases {.unnumbered}
+
+- **Quick reference** — print this one sheet for a meeting
+- **Orientation for new users** — the Workbook Guide tells them what each tab does
+- **Report attachment** — this sheet summarizes everything in one place
+
+## A.11 Tax Analysis Sheet {.unnumbered}
+
+**Created when `tax_params` is provided.** U.S. timber tax analysis under
+IRC Section 631 with reforestation incentives.
+
+### Why Timber Is Taxed Differently {.unnumbered}
+
+Timber is a unique asset class in the U.S. tax code. Unlike most business
+income, timber sale proceeds can qualify for **long-term capital gains**
+treatment rather than ordinary income rates. This is because Congress has
+recognized since the Revenue Act of 1944 that timber is a long-term capital
+asset — a tree planted today may not be harvested for 25-40 years. Taxing
+the entire harvest as ordinary income in one year would compress decades of
+growth into a single tax year, creating an unfair burden.
+
+Key differences from other assets:
+
+| Feature | Timber | Stocks/Bonds | Real Estate |
+|---------|--------|-------------|-------------|
+| Holding period | 10-80 years | Days to years | Years |
+| Income pattern | Lumpy (harvest years) | Periodic (dividends) | Periodic (rent) |
+| Cost recovery | **Cost depletion** | Purchase basis | Depreciation |
+| Capital gains | Sections 631(a)/(b) | Standard LTCG | Section 1250 |
+| Special incentives | **Section 194** reforestation | None | 1031 exchange |
+
+### Capital Gains vs. Ordinary Income for Timber {.unnumbered}
+
+Understanding when timber income is capital gains vs. ordinary income is
+the single most important tax question for forest landowners.
+
+**Capital gains treatment (lower rate):**
+
+- Gain from sale of standing timber held > 1 year, with a Section 631
+  election
+- Section 1231 gain: if net Section 1231 gains exceed losses, all are
+  treated as long-term capital gains
+- Current federal LTCG rates: 0%, 15%, or 20% depending on taxable income
+  (most landowners pay 15%)
+
+**Ordinary income treatment (higher rate):**
+
+- Timber sold without a Section 631 election
+- Short-term gains (timber held ≤ 1 year — rare for planted timber)
+- Income from timber cut and used in the taxpayer's own business (without
+  631(a) election)
+- Logging services income (the logging contractor's wages are ordinary)
+- Christmas tree sales, nursery stock, and other "crop" timber
+
+**The "Section 1231 netting" rule:** If total Section 1231 gains exceed
+losses, all gains are long-term capital gains. But if losses exceed gains,
+all are ordinary losses (fully deductible). This asymmetry is favorable
+to the taxpayer. However, the "Section 1231(c) recapture" rule requires
+that net Section 1231 gains be treated as ordinary income to the extent
+of unrecaptured Section 1231 losses from the prior 5 years.
+
+### Acquisition Context: Establishing Basis {.unnumbered}
+
+When you **acquire** timberland (purchase, inheritance, or gift), you must
+allocate the total cost among separate accounts:
+
+1. **Land account** — non-depletable (recovered only on sale)
+2. **Timber account** — depleted as timber is harvested
+3. **Improvements account** — roads, bridges (depreciated over useful life)
+4. **Pre-merchantable timber** — young timber not yet harvestable (transferred
+   to timber account when merchantable)
+
+**Purchase:** Basis = purchase price, allocated by fair market value of each
+component. A timber cruise at acquisition is essential.
+
+**Inheritance:** Basis = fair market value on date of death (or alternate
+valuation date). This "stepped-up basis" can significantly reduce future
+tax liability.
+
+**Gift:** Basis = donor's adjusted basis (carryover basis) for gains.
+For losses, basis = lesser of donor's basis or FMV at time of gift.
+
+### Divestment Context: Tax Planning for Sale {.unnumbered}
+
+When **divesting** timberland, tax considerations include:
+
+- **Timber vs. land:** Timber gain qualifies for capital gains (with 631
+  election); land gain is standard Section 1231/capital gain if held > 1 year
+- **Installment sales:** Spreading gain over multiple tax years to stay in
+  lower brackets (Section 453)
+- **Like-kind exchange:** Section 1031 applies to land but **not** to
+  standing timber (timber is considered "property held primarily for sale")
+- **Charitable donations:** Conservation easements can provide significant
+  deductions while retaining timber rights
+- **State taxes:** Vary significantly — some states have severance taxes,
+  yield taxes, or specific timber excise taxes in addition to income tax
+
+### Uneven-Aged Management: Special Tax Considerations {.unnumbered}
+
+Managing forests on an uneven-aged (selection) basis creates unique tax
+situations:
+
+**Periodic partial harvests:**
+
+- Each cutting cycle (typically 10-20 years) generates income that can
+  qualify for capital gains treatment
+- Cost depletion must be tracked carefully — the depletion rate changes
+  after each harvest because the remaining basis and volume change
+- Use `depletion_schedule()` to track basis across multiple harvests
+
+**Continuous forest cover:**
+
+- No clear "rotation" — the forest is always producing; no single
+  establishment cost to recover
+- Annual costs (property tax, management fees) are deductible as
+  ordinary business expenses (Schedule C or Form T)
+- Consider whether management is a "trade or business" (material
+  participation test) vs. "investment" (passive activity rules)
+
+**Mixed-age inventory:**
+
+- Separate timber accounts may be needed for different age classes
+  or species groups
+- When acquiring a mixed-age property, allocate basis to merchantable
+  vs. pre-merchantable timber (typically by volume x price)
+- Example: a 500-acre northern hardwood tract with timber worth
+  $850/acre merchantable and $200/acre pre-merchantable would have
+  separate accounts
+
+### Sheet Sections {.unnumbered}
+
+1. **Tax Parameters** (editable yellow cells) — gross revenue, cost basis,
+   holding period, marginal rate, capital gains rate, state rate,
+   reforestation cost
+2. **Section 631 Method Comparison** — side-by-side table: 631(a), 631(b),
+   ordinary income. Shows gross revenue, depletion, taxable gain, capital
+   gain/ordinary income split, tax liability, net after tax, effective rate.
+   Highlights recommended method and savings vs. ordinary.
+3. **Reforestation Deduction (Section 194)** — 84-month amortization schedule
+   with annual deduction, tax savings, cumulative savings. Shows effective
+   subsidy rate.
+4. **Tax Reference Guide** — when to use each method, gain treatment, key
+   advantages
+5. **Notes** — disclaimer and references (timbertax.org, GTR-SRS-112)
+
+### Section 631(a) vs. 631(b) — When to Use Each {.unnumbered}
+
+| Criterion | 631(a) | 631(b) |
+|-----------|--------|--------|
+| **Who cuts** | Owner or contractor cuts for owner | Buyer cuts (pay-as-cut) |
+| **Sale type** | Owner sells logs after cutting | Standing timber sale |
+| **Election** | Must elect on tax return; can revoke | Automatic for qualifying sales |
+| **FMV timing** | First day of tax year | Date of sale/contract |
+| **Best for** | Owner-operators, value-added operations | Lump-sum stumpage sales |
+| **Complexity** | Higher (need FMV appraisal on Jan 1) | Lower (sale price = FMV) |
+
+**Practical guidance:** For most private landowners who sell stumpage to a
+logger, **631(b) is the simplest and most common choice**. Section 631(a)
+is more common for integrated forest products companies that cut their own
+timber.
+
+### Cost Depletion — How It Works {.unnumbered}
+
+Cost depletion is the IRS-approved method for recovering your timber
+investment. It works like "units of production" depreciation:
+
+$$\text{Depletion rate} = \frac{\text{Adjusted basis remaining}}{\text{Volume remaining}}$$
+
+$$\text{Depletion this harvest} = \text{Rate} \times \text{Volume cut}$$
+
+**Example:** You purchased a 500-acre tract with 10,000 MBF of timber.
+Your timber basis is $600,000.
+
+- Harvest 1 (2,500 MBF): Rate = $600,000 / 10,000 = $60/MBF.
+  Depletion = 2,500 × $60 = **$150,000** tax-free.
+- Harvest 2 (3,000 MBF): Rate = $450,000 / 7,500 = $60/MBF.
+  Depletion = 3,000 × $60 = **$180,000** tax-free.
+
+This is tracked automatically by `depletion_schedule()`.
+
+### Section 194 — Reforestation Tax Incentive {.unnumbered}
+
+IRC Section 194 encourages reforestation by providing two benefits:
+
+1. **Direct deduction:** Up to $10,000 per year of qualifying
+   reforestation expenses deducted immediately
+2. **84-month amortization:** Amounts over $10,000 are amortized ratably
+   over 84 months (7 years), using a half-year convention
+
+**Qualifying expenses:** Site preparation, seed, seedlings, planting labor,
+direct supervision of planting crews. Does **not** include land clearing
+for non-timber purposes, expenses already deducted under other provisions,
+or costs of timber stand improvement (TSI) — TSI is a separate deduction.
+
+**Half-year convention:** The first and last years get half a year's
+amortization (1/14 of excess), while years 2-7 get a full year (1/7).
+
+### Data Required {.unnumbered}
+
+Provide `tax_params` as a named list:
+
+```{r}
+#| eval: false
+# Using the timber_sales() dataset
+sales <- timber_sales()
+tax_params <- list(
+  gross_revenue = sales$gross_revenue[1],  # $45,000
+  cost_basis = sales$cost_basis[1],        # $8,000
+  holding_period = sales$holding_period_years[1],  # 25 years
+  marginal_rate = 0.24,        # 24% ordinary income bracket
+  cap_gains_rate = 0.15,       # 15% LTCG rate
+  state_rate = 0.05,           # 5% state income tax
+  reforestation_cost = 45000   # Section 194 expenses ($)
+)
+```
+
+### Use Cases {.unnumbered}
+
+- **Tax planning before harvest** — compare methods to choose best election
+- **Client presentation** — show landowner savings from Section 631
+- **Reforestation timing** — see when tax savings from Section 194 arrive
+- **Estate planning** — project tax impact of timber income for estate
+  administrators
+- **Acquisition due diligence** — model after-tax returns for a potential
+  timberland purchase
+- **Divestment analysis** — compute net proceeds after federal and state
+  taxes under different sale structures
+- **Uneven-aged management** — track depletion across multiple partial
+  harvests over decades
+
+### References {.unnumbered}
+
+- Siegel, W.C., Haney, H.L. Jr., & Greene, J.L. (2009). *Federal Income Tax
+  on Timber: A Key to Your Most Frequently Asked Questions*. USDA Forest
+  Service GTR-SRS-112. [Free download from USFS Treesearch]
+- Haney, H.L. Jr., Hoover, W.L., Siegel, W.C., & Greene, J.L. (2001).
+  *Forest Landowners' Guide to the Federal Income Tax*. USDA Forest Service
+  Agriculture Handbook 718.
+- IRS Publication 535 (Business Expenses), Chapter 7 — Reforestation Costs
+- National Timber Tax Website: [timbertax.org](https://timbertax.org)
+- Hoover, W.L. (2017). *Timber Tax Management for CPAs*. Purdue Extension.
+
+---
+
+# Appendix B: Complete Worked Examples {#sec-appendix-examples .unnumbered}
+
+## B.1 Southern Pine Plantation — Full Export {.unnumbered}
+
+A common use case: a loblolly pine plantation in the U.S. South with
+pulpwood and sawtimber products, annual property tax, and a pre-commercial
+thinning.
+
+```{r}
+#| eval: false
+# ---- Step 1: Build the yield table ----
+ages <- seq(10, 40, by = 5)
+yt_pine <- yield_table(
+  ages = ages,
+  products = list(
+    sawtimber = data.frame(
+      volume = c(0, 0, 0, 4, 8, 14, 18),   # MBF/acre
+      price = 210                             # $/MBF
+    ),
+    chip_n_saw = data.frame(
+      volume = c(0, 0, 3, 6, 8, 9, 9),      # MBF/acre
+      price = 95
+    ),
+    pulpwood = data.frame(
+      volume = c(8, 16, 22, 26, 28, 29, 28), # tons/acre
+      price = 9                               # $/ton
+    )
+  ),
+  product_units = c(sawtimber = "mbf", chip_n_saw = "mbf", pulpwood = "ton")
+)
+
+# ---- Step 2: Build the management schedule ----
+pine_schedule <- data.frame(
+  name = c("Site Prep & Planting", "Property Tax", "Pre-Commercial Thin",
+           "Fertilization", "Commercial Thin", "Final Harvest"),
+  amount = c(-550, -12, -125, -80, 1200, 5800),
+  year = c(0, 0, 8, 12, 18, 30),
+  frequency = c("once", "annual", "once", "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA)
+)
+
+# ---- Step 3: Export ----
+export_excel(
+  yield_tbl = yt_pine,
+  schedule = pine_schedule,
+  discount_rate = 0.06,
+  regen_cost = 550,
+  annual_cost = 12,
+  time_horizon = 40,
+  file = "pine_plantation_analysis.xlsx",
+  title = "Loblolly Pine Plantation — Tract 1247",
+  author = "R. Smith, CF",
+  sensitivity_rates = seq(0.04, 0.10, by = 0.01),
+  sensitivity_prices = seq(0.6, 1.4, by = 0.1)
+)
+```
+
+**What you get:**
+
+- Parameters sheet with 3 editable product prices + 4 cost/rate parameters
+- Yield Table showing the pulpwood → sawtimber transition
+- Rotation Analysis: likely optimal around age 25–30 at 6%
+- Cash Flow: pre-commercial thin and fertilization as costs; commercial thin and
+  harvest as revenues
+- Financial Metrics: IRR, NPV, MIRR, B/C ratio, EAA, payback period
+- Sensitivity: 7 x 9 grid of LEV values across rates and price levels
+- Break-Even: minimum stumpage price at each rotation
+- Scenarios: base vs optimistic vs pessimistic vs custom
+- Charts: 4 visualizations
+- Summary: executive overview
+
+## B.2 Northern Hardwood Selection — Yield Table Only {.unnumbered}
+
+A selection-harvest system in the Lake States. No explicit management schedule
+because the focus is on sustained yield analysis at different rotation ages.
+
+```{r}
+#| eval: false
+ages <- seq(40, 120, by = 10)
+yt_hardwood <- yield_table(
+  ages = ages,
+  products = list(
+    veneer = data.frame(
+      volume = c(0, 0, 0.5, 1.5, 3, 4.5, 5.5, 6, 6),  # MBF/acre
+      price = 850
+    ),
+    sawlog = data.frame(
+      volume = c(0, 1, 3, 6, 9, 11, 12.5, 13, 12.5),
+      price = 300
+    ),
+    firewood = data.frame(
+      volume = c(3, 5, 7, 8, 8, 7, 6, 5, 4),   # cords/acre
+      price = 45
+    )
+  ),
+  product_units = c(veneer = "mbf", sawlog = "mbf", firewood = "cord")
+)
+
+export_excel(
+  yield_tbl = yt_hardwood,
+  discount_rate = 0.04,
+  regen_cost = 200,
+  annual_cost = 8,
+  time_horizon = 120,
+  file = "hardwood_selection.xlsx",
+  title = "Northern Hardwood — Selection Harvest Analysis",
+  author = "J. Forester"
+)
+```
+
+**Produced:** 8 sheets (no Cash Flow or Financial Metrics since no schedule).
+The product mix chart will show the veneer crossover point — critical for
+timing the harvest when the high-value veneer component dominates.
+
+## B.3 Investment Analysis — Schedule Only {.unnumbered}
+
+A timberland acquisition analysis. No yield table needed — just the investment
+cash flow.
+
+```{r}
+#| eval: false
+acquisition <- data.frame(
+  name = c("Land Purchase", "Property Tax", "Insurance",
+           "Road Maintenance", "Timber Sale Year 5",
+           "Timber Sale Year 15", "Land + Timber Sale"),
+  amount = c(-250000, -3200, -800, -1500, 45000, 85000, 320000),
+  year = c(0, 0, 0, 0, 5, 15, 20),
+  frequency = c("once", "annual", "annual", "annual",
+                "once", "once", "once"),
+  period_length = c(NA, NA, NA, NA, NA, NA, NA)
+)
+
+export_excel(
+  schedule = acquisition,
+  discount_rate = 0.05,
+  time_horizon = 20,
+  file = "timberland_acquisition.xlsx",
+  title = "Timberland Acquisition Analysis — 500 Acres",
+  author = "Investment Committee"
+)
+```
+
+**Produced:** 5 sheets. The Financial Metrics sheet will show IRR, NPV, and
+B/C ratio — the key numbers for an investment committee. The Cash Flow sheet
+shows exactly when cash goes out and comes in, with cumulative NPV tracking
+when the investment breaks even.
+
+## B.4 Quick Comparison — No Charts, Minimal Grid {.unnumbered}
+
+For a quick export on a headless server or CI pipeline:
+
+```{r}
+#| eval: false
+export_excel(
+  yield_tbl = yt,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  file = "quick_export.xlsx",
+  include_charts = FALSE,
+  sensitivity_rates = seq(0.04, 0.08, by = 0.02),
+  sensitivity_prices = c(0.8, 1.0, 1.2)
+)
+```
+
+This produces a smaller, faster workbook with a 3 x 3 sensitivity grid and
+no embedded images.
+
+---
+
+# Appendix C: Excel Workbook Architecture {#sec-appendix-architecture .unnumbered}
+
+## Cell Reference Map {.unnumbered}
+
+All formulas across all sheets reference these cells on the Parameters sheet:
+
+```
+Parameters!$B$8   → Discount Rate (as decimal)
+Parameters!$B$9   → Regeneration Cost ($)
+Parameters!$B$10  → Annual Cost ($/yr)
+Parameters!$B$11  → Time Horizon (years)
+Parameters!$B$14  → First product price ($)
+Parameters!$B$15  → Second product price ($)
+Parameters!$B$16+ → Additional product prices
+```
+
+## Formula Chain {.unnumbered}
+
+The formula dependency graph flows in one direction:
+
+```
+Parameters (source of truth)
+    │
+    ├──→ Yield Table (vol × price)
+    │        │
+    │        └──→ Rotation Analysis (PV, NPV, LEV)
+    │
+    ├──→ Cash Flow (discount factor, cumulative NPV)
+    │        │
+    │        └──→ Financial Metrics (IRR, NPV, MIRR, EAA)
+    │
+    └──→ Summary (linked parameter display)
+```
+
+## Auto-Update vs Snapshot {.unnumbered}
+
+| Sheet | Behavior |
+|-------|----------|
+| Parameters | Source — always current |
+| Yield Table | **Auto-updates** — formulas reference Parameters prices |
+| Rotation Analysis | **Auto-updates** — full formula chain |
+| Cash Flow | **Auto-updates** — discount factor uses Parameters rate |
+| Financial Metrics | **Auto-updates** — Excel IRR/NPV on cash flow series |
+| Sensitivity | **Snapshot** — R-computed grid, frozen at export time |
+| Break-Even | **Snapshot** — R-computed via uniroot, frozen |
+| Scenarios | **Snapshot** — R-computed for each scenario, frozen |
+| Charts | **Snapshot** — embedded PNG images, frozen |
+| Summary | **Partial** — linked params update, key results are R-computed |
+
+**To refresh snapshots:** call `export_excel()` again from R with updated parameters.
+
+## Color Convention Guide {.unnumbered}
+
+| Color | Meaning |
+|-------|---------|
+| Yellow background | Editable cell — change this! |
+| Green header | Data table column header |
+| Blue header | Computed result column header |
+| Orange header | Percentage or comparison column |
+| Green text | Positive cash flow / revenue |
+| Red text | Negative cash flow / cost |
+| Green → Red color scale | High value → Low value |
+| Blue → Orange color scale | Short rotation → Long rotation |
+| Data bars | Visual magnitude comparison |
+
+---
+
+# Appendix D: Complete Workflows — From Data to Export {#sec-appendix-workflows .unnumbered}
+
+Each workflow below starts from scratch (raw data) and walks through every
+step to a finished analysis, using the package's example datasets. These
+are designed as self-contained tutorials that demonstrate how function
+groups work together.
+
+## D.1 Plantation Investment Analysis {.unnumbered}
+
+**Goal:** Evaluate whether a loblolly pine plantation is a good investment.
+**Functions used:** `pine_yields()`, `pine_schedule()`, `yield_table`,
+`optimal_rotation_mp()`, `npv_schedule()`, `irr()`, `lev()`, `cash_flow_schedule()`,
+`sensitivity_1way()`, `export_excel()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Load example data ----
+yt <- pine_yields()         # yield table: sawlog + pulpwood, ages 10-50
+sched <- pine_schedule()    # management schedule: plant, thin, harvest
+
+# ---- Step 2: Find optimal rotation ----
+opt <- optimal_rotation_mp(yt, regen_cost = 750, annual_cost = 17,
+                            discount_rate = 0.06)
+opt$optimal_age       # e.g., 35 years
+opt$value_at_optimum  # maximum LEV ($/acre)
+
+# ---- Step 3: Compute key financial metrics ----
+# NPV of the full management plan
+sched_npv <- npv_schedule(sched, discount_rate = 0.06, time_horizon = 35)
+sched_npv  # positive = profitable investment
+
+# IRR: what rate of return does this earn?
+cf <- cash_flow_schedule(sched, time_horizon = 35)
+plantation_irr <- irr(cf$annual_cash_flow$net_flow, cf$annual_cash_flow$year)
+plantation_irr  # e.g., ~8%
+
+# LEV: what is bare land worth under perpetual pine management?
+harvest_rev <- opt$revenue_at_optimum
+lev_val <- lev(harvest_rev - 750, rotation_age = opt$optimal_age,
+                discount_rate = 0.06)
+lev_val  # $/acre
+
+# ---- Step 4: Sensitivity analysis ----
+# How sensitive is the LEV to discount rate?
+sens <- sensitivity_1way(
+  param_values = seq(0.03, 0.10, by = 0.005),
+  eval_fn = function(r) {
+    o <- optimal_rotation_mp(yt, 750, 17, r)
+    lev(o$revenue_at_optimum - 750, o$optimal_age, r)
+  }
+)
+plot(sens)
+
+# ---- Step 5: Export everything to Excel ----
+export_excel(
+  yield_tbl = yt,
+  schedule = sched,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  time_horizon = 35,
+  file = "pine_plantation_analysis.xlsx",
+  title = "Loblolly Pine Investment Analysis",
+  author = "Your Name"
+)
+```
+
+**What you get:** A 10-sheet Excel workbook where changing the discount rate
+in the Parameters sheet automatically recalculates NPV, LEV, rotation
+analysis, and cash flows.
+
+
+## D.2 Timberland Appraisal — Full Three-Approach Valuation {.unnumbered}
+
+**Goal:** Appraise a 500-acre timberland property using all three standard
+approaches (income, cost/liquidation, sales comparison).
+**Functions used:** `pine_yields()`, `rate_components()`, `comparable_sales_data()`,
+`discount_rate_buildup()`, `timberland_value()`, `liquidation_value()`,
+`comparable_sale()`, `tract_aggregate()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Establish the discount rate ----
+rc <- rate_components()
+dr <- discount_rate_buildup(
+  risk_free = rc$typical_mid[1],        # 4.0%
+  inflation_premium = rc$typical_mid[2], # 2.5%
+  illiquidity_premium = rc$typical_mid[3], # 1.0%
+  management_risk = rc$typical_mid[4],  # 0.5%
+  market_risk = rc$typical_mid[5],      # 1.0%
+  property_specific = 0.005             # average property risk
+)
+r <- dr$real_rate  # real rate for discounting real cash flows
+
+# ---- Step 2: Income approach ----
+yt <- pine_yields()
+
+# Stand A: 200 acres of 25-year-old pine
+val_a <- timberland_value(yt, discount_rate = r, regen_cost = 750,
+                           annual_cost = 17, current_age = 25,
+                           method = "income")
+val_a$total_value * 200  # total value for Stand A
+
+# Stand B: 300 acres of 10-year-old pine
+val_b <- timberland_value(yt, discount_rate = r, regen_cost = 750,
+                           annual_cost = 17, current_age = 10,
+                           method = "income")
+val_b$total_value * 300  # total value for Stand B
+
+# Aggregate the two stands
+total <- tract_aggregate(
+  stand_a = val_a, stand_b = val_b,
+  acres = c(stand_a = 200, stand_b = 300)
+)
+cat("Income approach total:", total$total_value, "\n")
+cat("Income approach $/acre:", total$per_acre_value, "\n")
+
+# ---- Step 3: Cost (liquidation) approach ----
+# What is the property worth if you harvest everything today?
+liq_a <- liquidation_value(yt, current_age = 25,
+                            logging_cost = 150, sale_cost_pct = 0.05)
+liq_b <- liquidation_value(yt, current_age = 10,
+                            logging_cost = 180, sale_cost_pct = 0.05)
+liq_total <- liq_a$net_value * 200 + liq_b$net_value * 300
+cat("Liquidation approach:", liq_total, "\n")
+
+# ---- Step 4: Sales comparison approach ----
+comps <- comparable_sales_data()
+
+# Adjust each comparable for the subject property
+adj_1 <- comparable_sale(comps$price_per_acre[1],
+  adjustments = list(timber = 200, access = 0, location = -50, time = 75))
+adj_2 <- comparable_sale(comps$price_per_acre[2],
+  adjustments = list(timber = 500, access = 200, location = 100, time = 100))
+adj_3 <- comparable_sale(comps$price_per_acre[3],
+  adjustments = list(timber = -100, access = -75, location = -100, time = 50))
+
+# Average of adjusted comparables
+comp_value <- mean(c(adj_1$adjusted_price, adj_2$adjusted_price,
+                      adj_3$adjusted_price)) * 500
+cat("Sales comparison approach:", comp_value, "\n")
+
+# ---- Step 5: Reconciliation ----
+# Weight the three approaches (typical: income 50%, sales 30%, cost 20%)
+reconciled <- total$total_value * 0.50 +
+              comp_value * 0.30 +
+              liq_total * 0.20
+cat("Reconciled value:", reconciled, "\n")
+cat("Reconciled $/acre:", reconciled / 500, "\n")
+```
+
+
+## D.3 Timber Tax Planning — Sale to Export {.unnumbered}
+
+**Goal:** Plan the tax treatment for a timber sale, track depletion across
+multiple harvests, compute after-tax returns, and export to Excel.
+**Functions used:** `timber_sales()`, `pine_harvests()`, `timber_tax()`,
+`tax_comparison()`, `depletion_schedule()`, `after_tax_npv()`,
+`reforestation_deduction()`, `export_excel()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Compare tax methods for a single sale ----
+sales <- timber_sales()
+sale <- sales[1, ]  # $45,000 loblolly pine sale, 25-year hold
+
+tc <- tax_comparison(
+  gross_revenue = sale$gross_revenue,
+  cost_basis = sale$cost_basis,
+  holding_period_years = sale$holding_period_years,
+  marginal_rate = 0.24,
+  cap_gains_rate = 0.15,
+  state_rate = 0.05
+)
+tc$recommendation       # which method saves the most
+tc$savings_vs_ordinary  # dollars saved
+tc$methods              # full comparison table
+
+# ---- Step 2: Track depletion across multiple harvests ----
+ph <- pine_harvests()
+ds <- depletion_schedule(
+  initial_basis = ph$initial_basis,   # $800,000
+  initial_volume = ph$initial_volume,  # 13,000 MBF
+  harvests = ph$harvests
+)
+ds$schedule       # per-harvest depletion rate and amount
+ds$remaining_basis  # basis left after all harvests
+
+# ---- Step 3: Compute after-tax NPV of a plantation investment ----
+sched <- pine_schedule()
+# Convert schedule to cash flows and times
+cf <- c(sched$amount[sched$frequency == "once"])
+times <- c(sched$year[sched$frequency == "once"])
+
+result <- after_tax_npv(
+  cash_flows = cf, times = times, discount_rate = 0.06,
+  cost_basis = 750,       # planting cost is the basis
+  tax_method = "631b",
+  marginal_rate = 0.24,
+  cap_gains_rate = 0.15,
+  state_rate = 0.05,
+  holding_period = 35
+)
+cat("Pre-tax NPV:", result$npv_pretax, "\n")
+cat("After-tax NPV:", result$npv_after_tax, "\n")
+cat("Tax impact:", result$tax_impact, "\n")
+
+# ---- Step 4: Model reforestation tax incentive ----
+rd <- reforestation_deduction(total_cost = 45000, tax_year = 2025,
+                               marginal_rate = 0.24)
+rd$year_1_deduction         # $10,000 immediate
+rd$total_tax_savings        # total savings over 8 years
+rd$effective_subsidy_rate   # ~24%
+rd$amortization_schedule    # year-by-year deduction schedule
+
+# ---- Step 5: Export with tax analysis ----
+yt <- pine_yields()
+export_excel(
+  yield_tbl = yt,
+  schedule = sched,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  time_horizon = 35,
+  file = "pine_with_tax.xlsx",
+  title = "Pine Plantation — Tax-Integrated Analysis",
+  tax_params = list(
+    gross_revenue = sale$gross_revenue,
+    cost_basis = sale$cost_basis,
+    holding_period = sale$holding_period_years,
+    marginal_rate = 0.24,
+    cap_gains_rate = 0.15,
+    state_rate = 0.05,
+    reforestation_cost = 45000
+  )
+)
+```
+
+
+## D.4 Hold vs. Sell — Divestment Decision {.unnumbered}
+
+**Goal:** A TIMO has received an offer on a mid-rotation tract. Should they
+sell now or hold to maturity?
+**Functions used:** `pine_yields()`, `hold_vs_sell()`, `timberland_value()`,
+`monte_carlo()`, `risk_metrics()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Deterministic analysis ----
+yt <- pine_yields()
+
+hs <- hold_vs_sell(
+  yt,
+  discount_rate = 0.06,
+  regen_cost = 750,
+  annual_cost = 17,
+  current_age = 25,
+  current_offer = 3500   # $/acre offered by buyer
+)
+hs$recommendation    # "hold" or "sell"
+hs$hold_value        # $/acre if held to optimal harvest
+hs$sell_value        # $/acre if sold now (the offer)
+hs$advantage         # $ difference
+hs$breakeven_price   # offer price that makes us indifferent
+
+# ---- Step 2: Risk analysis — is holding risky? ----
+# Monte Carlo: what if prices are uncertain?
+mc <- monte_carlo(
+  n = 5000,
+  eval_fn = function() {
+    # Simulate a random price multiplier
+    price_mult <- rlnorm(1, meanlog = 0, sdlog = 0.25)
+    # Adjust yield table prices
+    yt_sim <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23),
+          price = 254 * price_mult),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27),
+          price = 9 * price_mult)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    tv <- timberland_value(yt_sim, 0.06, 750, 17, current_age = 25)
+    tv$total_value
+  }
+)
+
+# Risk metrics: probability of hold value falling below offer
+rm <- risk_metrics(mc, threshold = 3500)
+cat("P(hold < offer):", rm$prob_below, "\n")
+cat("Expected hold value:", rm$mean, "\n")
+cat("5th percentile:", rm$VaR_95, "\n")
+```
+
+
+## D.5 Stochastic Timber Pricing — Price Risk Analysis {.unnumbered}
+
+**Goal:** Model timber price uncertainty and its impact on investment returns.
+**Functions used:** `stochastic_prices()`, `simulate_yield()`, `monte_carlo()`,
+`risk_metrics()`, `sensitivity_2way()`, `tornado_plot()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Generate stochastic price paths ----
+# Geometric Brownian Motion for sawlog prices
+sawlog_paths <- stochastic_prices(
+  n_paths = 200, n_years = 40,
+  initial_price = 254,
+  drift = 0.02,       # 2% real price growth
+  volatility = 0.15,  # 15% annual volatility
+  model = "gbm"
+)
+
+# Mean-reverting (OU) model for pulpwood
+pulp_paths <- stochastic_prices(
+  n_paths = 200, n_years = 40,
+  initial_price = 9,
+  drift = 0.01,
+  volatility = 0.20,
+  model = "ou",
+  mean_reversion = 0.15,
+  long_run_mean = 10
+)
+
+# ---- Step 2: Monte Carlo LEV with price uncertainty ----
+mc_lev <- monte_carlo(
+  n = 2000,
+  eval_fn = function() {
+    sp <- 254 * exp(rnorm(1, 0.02 * 35, 0.15 * sqrt(35)))
+    pp <- 9 * exp(rnorm(1, 0.01 * 35, 0.20 * sqrt(35)))
+    yt_sim <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23), price = sp),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27), price = pp)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    opt <- optimal_rotation_mp(yt_sim, 750, 17, 0.06)
+    lev(opt$revenue_at_optimum - 750, opt$optimal_age, 0.06)
+  }
+)
+plot(mc_lev)
+rm <- risk_metrics(mc_lev, threshold = 0)
+cat("P(LEV < 0):", rm$prob_below, "\n")
+cat("Mean LEV:", rm$mean, "\n")
+
+# ---- Step 3: Two-way sensitivity: rate x price ----
+sens2 <- sensitivity_2way(
+  param1_values = seq(0.03, 0.10, by = 0.01),
+  param2_values = seq(150, 400, by = 25),
+  eval_fn = function(r, p) {
+    yt_s <- yield_table(
+      ages = seq(10, 50, by = 5),
+      products = list(
+        sawlog = data.frame(
+          volume = c(0, 0, 1.5, 4, 8, 13, 17.5, 21, 23), price = p),
+        pulpwood = data.frame(
+          volume = c(8, 16, 22, 26, 28, 29, 29, 28, 27), price = 9)
+      ),
+      product_units = c(sawlog = "mbf", pulpwood = "ton")
+    )
+    opt <- optimal_rotation_mp(yt_s, 750, 17, r)
+    lev(opt$revenue_at_optimum - 750, opt$optimal_age, r)
+  }
+)
+plot(sens2)
+
+# ---- Step 4: Tornado diagram — which factors matter most? ----
+tp <- tornado_plot(
+  base_value = lev(8500 - 750, 35, 0.06),
+  params = list(
+    "Discount rate" = list(low = 0.04, high = 0.08,
+      fn = function(r) lev(8500 - 750, 35, r)),
+    "Sawlog price" = list(low = 180, high = 330,
+      fn = function(p) lev(p * 23 + 9 * 27 - 750, 35, 0.06)),
+    "Regen cost" = list(low = 500, high = 1000,
+      fn = function(c) lev(8500 - c, 35, 0.06)),
+    "Rotation age" = list(low = 25, high = 45,
+      fn = function(a) lev(8500 - 750, a, 0.06))
+  )
+)
+plot(tp)
+```
+
+
+## D.6 Northern Hardwood Selection — Uneven-Aged Management {.unnumbered}
+
+**Goal:** Analyze a northern hardwood stand managed on a selection system
+with periodic partial harvests and multi-decade tax tracking.
+**Functions used:** `hardwood_yields()`, `rotation_comparison_mp()`,
+`depletion_schedule()`, `timber_tax()`, `after_tax_npv()`
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Step 1: Evaluate cutting cycle options ----
+yt <- hardwood_yields()
+
+# Compare different cutting cycles (treated as "rotation ages")
+rc <- rotation_comparison_mp(yt, regen_cost = 500, annual_cost = 25,
+                              discount_rate = 0.04)
+rc  # LEV, NPV at each age
+
+# ---- Step 2: Model periodic harvests for tax purposes ----
+# Assume 500 acres, 8,000 MBF total, basis = $400,000
+# Selection harvests every 15-20 years
+harvests <- data.frame(
+  year = c(2010, 2025, 2040, 2055),
+  volume = c(1500, 2000, 2500, 2000),
+  revenue = c(450000, 680000, 900000, 750000)
+)
+
+ds <- depletion_schedule(
+  initial_basis = 400000,
+  initial_volume = 8000,
+  harvests = harvests
+)
+ds$schedule  # depletion rate changes each harvest
+
+# ---- Step 3: Tax analysis for each harvest ----
+for (i in seq_len(nrow(ds$schedule))) {
+  cat("\n--- Harvest", i, "(", ds$schedule$year[i], ") ---\n")
+  tt <- timber_tax(
+    gross_revenue = ds$schedule$revenue[i],
+    cost_basis = ds$schedule$depletion_amount[i],
+    holding_period_years = 20,
+    method = "631b",
+    marginal_tax_rate = 0.24,
+    capital_gains_rate = 0.15
+  )
+  cat("Revenue:", ds$schedule$revenue[i], "\n")
+  cat("Depletion:", ds$schedule$depletion_amount[i], "\n")
+  cat("Tax:", tt$tax_liability, "\n")
+  cat("Net:", tt$net_after_tax, "\n")
+}
+
+# ---- Step 4: After-tax NPV of 45-year management plan ----
+# Costs: $25/acre/year management + $500/acre regen after each harvest
+cf <- c(-500, rep(-25 * 500, 14), 450000 - 500, rep(-25 * 500, 14),
+        680000 - 500, rep(-25 * 500, 14), 900000)
+times <- 0:44
+
+result <- after_tax_npv(cf, times, discount_rate = 0.04,
+                         cost_basis = 400000, tax_method = "631b")
+cat("After-tax NPV:", result$npv_after_tax, "\n")
+```
+
+
+## D.7 Quick Reference — Minimal Examples {.unnumbered}
+
+One-liner examples showing each major function group.
+
+```{r}
+#| eval: false
+library(forestvalues)
+
+# ---- Time value of money ----
+discount(100000, 0.06, 30)              # PV of $100K in 30 years
+compound(750, 0.06, 35)                 # FV of $750 planting cost
+
+# ---- NPV ----
+npv(c(-750, 8500), c(0, 35), 0.06)     # simple plantation NPV
+npv_schedule(pine_schedule(), 0.06, 35) # from management schedule
+
+# ---- IRR ----
+irr(c(-750, 8500), c(0, 35))           # plantation rate of return
+mirr(c(-750, 8500), c(0, 35), 0.06, 0.04)  # modified IRR
+
+# ---- LEV / Faustmann ----
+lev(8500 - 750, 35, 0.06)              # bare land value
+lev_schedule(pine_schedule(), 0.06, 35) # from management schedule
+
+# ---- Rotation ----
+yt <- pine_yields()
+optimal_rotation_mp(yt, 750, 50, 0.06) # optimal harvest age
+
+# ---- Appraisal ----
+timberland_value(yt, 0.06, 750, 50, current_age = 25)
+hold_vs_sell(yt, 0.06, 750, 50, current_age = 25, current_offer = 3000)
+
+# ---- Tax ----
+timber_tax(45000, 8000, holding_period_years = 25, method = "631b")
+tax_comparison(45000, 8000, 25)
+reforestation_deduction(45000, 2025)
+
+# ---- Excel export ----
+export_excel(yt, pine_schedule(), 0.06, 750, 50, 35,
+             file = "quick.xlsx", include_charts = FALSE)
+```
