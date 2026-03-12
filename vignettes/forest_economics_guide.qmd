@@ -1690,50 +1690,94 @@ This adds a **Tax Analysis** sheet with:
 
 # Function Reference {#sec-reference}
 
-| Function | Purpose | Section |
-|----------|---------|---------|
-| `discount()` | PV of future amount | @sec-tvm |
-| `compound()` | FV of present amount | @sec-tvm |
-| `npv()` | Net present value | @sec-npv |
-| `npv_schedule()` | NPV from management schedule | @sec-npv |
-| `incremental_npv()` | Compare two alternatives | @sec-npv |
-| `irr()` | Internal rate of return | @sec-irr |
-| `mirr()` | Modified IRR | @sec-irr |
-| `lev()` | Land expectation value (Faustmann) | @sec-lev |
-| `bare_land_value()` | Alias for `lev()` | @sec-lev |
-| `lev_schedule()` | LEV from management schedule | @sec-lev |
-| `optimal_rotation()` | Find optimal rotation age | @sec-rotation |
-| `rotation_comparison()` | Compare rotation ages | @sec-rotation |
-| `stumpage_value()` | Timber valuation | @sec-stumpage |
-| `create_price_table()` | Build price table | @sec-stumpage |
-| `update_prices()` | Inflation adjustment | @sec-stumpage |
-| `cash_flow_schedule()` | Year-by-year cash flows | @sec-income |
-| `project_income()` | Income from yield + prices | @sec-income |
-| `annualize()` | Equivalent annual annuity | @sec-income |
-| `monte_carlo()` | Monte Carlo simulation | @sec-stochastic |
-| `stochastic_prices()` | GBM/OU price paths | @sec-stochastic |
-| `simulate_yield()` | Stochastic yield variation | @sec-stochastic |
-| `risk_metrics()` | VaR, P(loss), ES | @sec-stochastic |
-| `sensitivity_1way()` | One-way sensitivity | @sec-sensitivity |
-| `sensitivity_2way()` | Two-way sensitivity | @sec-sensitivity |
-| `tornado_plot()` | Tornado diagram | @sec-sensitivity |
-| `breakeven_analysis()` | Find breakeven values | @sec-sensitivity |
-| `yield_table()` | Multi-product yield table | @sec-yield-tables |
-| `optimal_rotation_mp()` | Multi-product optimal rotation | @sec-yield-tables |
-| `rotation_comparison_mp()` | Multi-product rotation comparison | @sec-yield-tables |
-| `export_excel()` | Formatted Excel workbook | @sec-excel |
-| `discount_rate_buildup()` | Build-up discount rate | @sec-appraisal |
-| `liquidation_value()` | Floor value of standing timber | @sec-appraisal |
-| `mid_rotation_value()` | Value mid-rotation stand | @sec-appraisal |
-| `comparable_sale()` | Sales comparison adjustment | @sec-appraisal |
-| `timberland_value()` | Income-approach valuation | @sec-appraisal |
-| `hold_vs_sell()` | Divestment decision analysis | @sec-appraisal |
-| `tract_aggregate()` | Multi-stand property summary | @sec-appraisal |
-| `timber_tax()` | IRC Section 631 tax computation | @sec-tax |
-| `tax_comparison()` | Compare 631(a)/631(b)/ordinary | @sec-tax |
-| `depletion_schedule()` | Multi-harvest basis tracking | @sec-tax |
-| `after_tax_npv()` | After-tax NPV with 631 treatment | @sec-tax |
-| `reforestation_deduction()` | Section 194 tax incentive | @sec-tax |
+## Core Financial Functions
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `discount()` | time-value | PV of future amount | @sec-tvm |
+| `compound()` | time-value | FV of present amount | @sec-tvm |
+| `npv()` | npv | Net present value | @sec-npv |
+| `npv_schedule()` | npv | NPV from management schedule | @sec-npv |
+| `incremental_npv()` | npv | Compare two alternatives | @sec-npv |
+| `irr()` | irr | Internal rate of return | @sec-irr |
+| `mirr()` | irr | Modified IRR | @sec-irr |
+| `lev()` | lev | Land expectation value (Faustmann) | @sec-lev |
+| `bare_land_value()` | lev | Alias for `lev()` | @sec-lev |
+| `lev_schedule()` | lev | LEV from management schedule | @sec-lev |
+
+## Rotation & Yield Analysis
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `optimal_rotation()` | rotation | Find optimal rotation age | @sec-rotation |
+| `rotation_comparison()` | rotation | Compare rotation ages | @sec-rotation |
+| `yield_table()` | yield-tables | Multi-product yield table | @sec-yield-tables |
+| `optimal_rotation_mp()` | yield-tables | Multi-product optimal rotation | @sec-yield-tables |
+| `rotation_comparison_mp()` | yield-tables | Multi-product rotation comparison | @sec-yield-tables |
+
+## Valuation & Income
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `stumpage_value()` | stumpage | Timber valuation | @sec-stumpage |
+| `create_price_table()` | stumpage | Build price table | @sec-stumpage |
+| `update_prices()` | stumpage | Inflation adjustment | @sec-stumpage |
+| `cash_flow_schedule()` | cash-flow | Year-by-year cash flows | @sec-income |
+| `project_income()` | cash-flow | Income from yield + prices | @sec-income |
+| `annualize()` | cash-flow | Equivalent annual annuity | @sec-income |
+
+## Risk & Sensitivity
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `monte_carlo()` | stochastic | Monte Carlo simulation | @sec-stochastic |
+| `stochastic_prices()` | stochastic | GBM/OU price paths | @sec-stochastic |
+| `simulate_yield()` | stochastic | Stochastic yield variation | @sec-stochastic |
+| `risk_metrics()` | stochastic | VaR, P(loss), ES | @sec-stochastic |
+| `sensitivity_1way()` | sensitivity | One-way sensitivity | @sec-sensitivity |
+| `sensitivity_2way()` | sensitivity | Two-way sensitivity | @sec-sensitivity |
+| `tornado_plot()` | sensitivity | Tornado diagram | @sec-sensitivity |
+| `breakeven_analysis()` | sensitivity | Find breakeven values | @sec-sensitivity |
+
+## Appraisal & Divestment
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `discount_rate_buildup()` | appraisal | Build-up discount rate | @sec-appraisal |
+| `liquidation_value()` | appraisal | Floor value of standing timber | @sec-appraisal |
+| `mid_rotation_value()` | appraisal | Value mid-rotation stand | @sec-appraisal |
+| `comparable_sale()` | appraisal | Sales comparison adjustment | @sec-appraisal |
+| `timberland_value()` | appraisal | Income-approach valuation | @sec-appraisal |
+| `hold_vs_sell()` | appraisal | Divestment decision analysis | @sec-appraisal |
+| `tract_aggregate()` | appraisal | Multi-stand property summary | @sec-appraisal |
+
+## Timber Taxation
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `timber_tax()` | timber-tax | IRC Section 631 tax computation | @sec-tax |
+| `tax_comparison()` | timber-tax | Compare 631(a)/631(b)/ordinary | @sec-tax |
+| `depletion_schedule()` | timber-tax | Multi-harvest basis tracking | @sec-tax |
+| `after_tax_npv()` | timber-tax | After-tax NPV with 631 treatment | @sec-tax |
+| `reforestation_deduction()` | timber-tax | Section 194 tax incentive | @sec-tax |
+
+## Export
+
+| Function | Family | Purpose | Section |
+|----------|--------|---------|---------|
+| `export_excel()` | excel-export | Formatted Excel workbook | @sec-excel |
+
+## Example Datasets
+
+| Function | Family | Returns | Section |
+|----------|--------|---------|---------|
+| `pine_yields()` | datasets | Loblolly pine yield table (SE U.S.) | @sec-appendix-workflows |
+| `hardwood_yields()` | datasets | Northern hardwood yield table (NE U.S.) | @sec-appendix-workflows |
+| `pine_schedule()` | datasets | Pine plantation management schedule | @sec-appendix-workflows |
+| `timber_sales()` | datasets | 3 timber sales for tax examples | @sec-appendix-workflows |
+| `pine_harvests()` | datasets | Multi-harvest depletion example | @sec-appendix-workflows |
+| `comparable_sales_data()` | datasets | 4 comparable timberland sales | @sec-appendix-workflows |
+| `rate_components()` | datasets | Discount rate component benchmarks | @sec-appendix-workflows |
 
 ---
 
@@ -1751,6 +1795,15 @@ This adds a **Tax Analysis** sheet with:
 - Klemperer, W.D. (1996). *Forest Resource Economics and Finance*. McGraw-Hill.
 - Pearse, P.H. (1990). *Introduction to Forestry Economics*. UBC Press.
 - Wagner, J.E. (2012). *Forestry Economics: A Managerial Approach*. Routledge.
+
+## Tax & Appraisal References
+
+- Cascio, A.J. & Clutter, M.L. (2008). "Risk and required return assessments of equity timberland investments in the United States." *Forest Products Journal* 58(10): 61-70.
+- Haney, H.L. Jr., Hoover, W.L., Siegel, W.C., & Greene, J.L. (2001). *Forest Landowners' Guide to the Federal Income Tax*. USDA Forest Service Agriculture Handbook 718.
+- Hoover, W.L. (2017). *Timber Tax Management for CPAs*. Purdue Extension.
+- Siegel, W.C., Haney, H.L. Jr., & Greene, J.L. (2009). *Federal Income Tax on Timber: A Key to Your Most Frequently Asked Questions*. USDA Forest Service GTR-SRS-112.
+- IRS Publication 535 (Business Expenses), Chapter 7 — Reforestation Costs.
+- National Timber Tax Website: [timbertax.org](https://timbertax.org)
 
 ## Seminal Papers
 
@@ -1789,7 +1842,8 @@ contains, how to use it, and practical worked examples.
 | 7 | Break-Even | `yield_tbl` | R-computed | No — re-export to update |
 | 8 | Scenarios | `yield_tbl` | R-computed | No — re-export to update |
 | 9 | Charts | `yield_tbl` or `schedule` | Embedded images | No — re-export to update |
-| 10 | Summary | Always | Mixed | Partially (linked params update) |
+| 10 | Tax Analysis | `tax_params` | R-computed | No — re-export to update |
+| 11 | Summary | Always | Mixed | Partially (linked params update) |
 
 ## A.1 Parameters Sheet {.unnumbered}
 

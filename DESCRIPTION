@@ -6,9 +6,13 @@ Authors@R:
 Description: A comprehensive toolkit for forest economic analysis including
     net present value (NPV), internal rate of return (IRR), land expectation
     value (LEV/Faustmann), optimal rotation age, stumpage valuation, income
-    projection, Monte Carlo simulation, and sensitivity analysis. Designed for
-    both practitioners and researchers in forest economics and natural resource
-    management. All methods are documented with academic citations.
+    projection, Monte Carlo simulation, sensitivity analysis, timberland
+    appraisal (income, liquidation, and sales comparison approaches), and
+    U.S. timber taxation (IRC Section 631, cost depletion, Section 194
+    reforestation incentives). Includes formatted Excel export with live
+    formulas. Designed for both practitioners and researchers in forest
+    economics and natural resource management. All methods are documented
+    with academic citations and example datasets.
 License: not for commercial or non-academic uses.
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
