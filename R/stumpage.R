@@ -43,6 +43,7 @@
 #'
 #' @seealso \code{\link{create_price_table}}, \code{\link{update_prices}}
 #'
+#' @family stumpage
 #' @export
 stumpage_value <- function(species, volume, product_class = "sawlog",
                             price_table = NULL, unit = "mbf") {
@@ -131,6 +132,7 @@ stumpage_value <- function(species, volume, product_class = "sawlog",
 #'   unit = c("mbf", "mbf", "mbf")
 #' )
 #'
+#' @family stumpage
 #' @export
 create_price_table <- function(species, product_class, price, unit = "mbf") {
   if (!is.character(species)) stop("'species' must be character", call. = FALSE)
@@ -176,6 +178,7 @@ create_price_table <- function(species, product_class, price, unit = "mbf") {
 #' updated <- update_prices(prices, inflation_rate = 0.03,
 #'                           base_year = 2019, target_year = 2024)
 #'
+#' @family stumpage
 #' @export
 update_prices <- function(price_table, inflation_rate, base_year, target_year) {
   if (!is.data.frame(price_table)) {

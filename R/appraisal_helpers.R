@@ -57,6 +57,7 @@
 #' liquidation_value(yt, current_age = 35, logging_cost = 150, sale_cost_pct = 0.05)
 #'
 #' @seealso \code{\link{timberland_value}}, \code{\link{mid_rotation_value}}
+#' @family appraisal
 #' @export
 liquidation_value <- function(yield_tbl, current_age, logging_cost = 0,
                                sale_cost_pct = 0) {
@@ -170,6 +171,7 @@ liquidation_value <- function(yield_tbl, current_age, logging_cost = 0,
 #'
 #' @seealso \code{\link{timberland_value}}, \code{\link{liquidation_value}},
 #'   \code{\link{lev}}
+#' @family appraisal
 #' @export
 mid_rotation_value <- function(yield_tbl, current_age, discount_rate,
                                 regen_cost = 0, annual_cost = 0,
@@ -325,6 +327,7 @@ mid_rotation_value <- function(yield_tbl, current_age, discount_rate,
 #' )
 #'
 #' @seealso \code{\link{timberland_value}}
+#' @family appraisal
 #' @export
 comparable_sale <- function(sale_price_per_acre, adjustments = list(),
                              sale_acres = 1,

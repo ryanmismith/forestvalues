@@ -44,6 +44,7 @@
 #'
 #' @seealso \code{\link{npv_schedule}}, \code{\link{project_income}}
 #'
+#' @family cash-flow
 #' @export
 cash_flow_schedule <- function(activities, time_horizon, discount_rate) {
   # Input validation
@@ -146,6 +147,7 @@ cash_flow_schedule <- function(activities, time_horizon, discount_rate) {
 #' result$harvests
 #' result$npv
 #'
+#' @family cash-flow
 #' @export
 project_income <- function(yield_fn, stumpage_price, harvest_ages,
                             harvest_fractions = NULL,
@@ -243,6 +245,7 @@ project_income <- function(yield_fn, stumpage_price, harvest_ages,
 #' # What annual income equals an NPV of $5,000 over 30 years at 6%?
 #' annualize(5000, 0.06, 30)
 #'
+#' @family cash-flow
 #' @export
 annualize <- function(present_value, discount_rate, n_years) {
   if (!is.numeric(present_value)) stop("'present_value' must be numeric", call. = FALSE)

@@ -66,6 +66,7 @@
 #'
 #' @seealso \code{\link{optimal_rotation_mp}}, \code{\link{optimal_rotation}}
 #'
+#' @family yield-tables
 #' @export
 yield_table <- function(ages, products, product_units = NULL) {
   # Validation
@@ -181,6 +182,7 @@ yield_table <- function(ages, products, product_units = NULL) {
 }
 
 
+#' @family yield-tables
 #' @export
 print.yield_table <- function(x, ...) {
   cat("Multi-Product Yield Table\n")
@@ -218,6 +220,7 @@ print.yield_table <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object.
+#' @family yield-tables
 #' @export
 plot.yield_table <- function(x, type = c("value", "volume"), ...) {
   type <- match.arg(type)
@@ -294,6 +297,7 @@ plot.yield_table <- function(x, type = c("value", "volume"), ...) {
 #' @seealso \code{\link{yield_table}}, \code{\link{optimal_rotation}},
 #'   \code{\link{rotation_comparison_mp}}
 #'
+#' @family yield-tables
 #' @export
 optimal_rotation_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
                                  discount_rate,
@@ -407,6 +411,7 @@ optimal_rotation_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
 #' comp <- rotation_comparison_mp(yt, 750, 50, 0.06)
 #' head(comp)
 #'
+#' @family yield-tables
 #' @export
 rotation_comparison_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
                                     discount_rate, ages = NULL) {

@@ -53,6 +53,7 @@
 #' @seealso \code{\link{bare_land_value}} (alias), \code{\link{lev_schedule}},
 #'   \code{\link{optimal_rotation}}
 #'
+#' @family lev
 #' @export
 lev <- function(net_revenue, rotation_age, discount_rate, is_npv = FALSE) {
   # Input validation
@@ -104,6 +105,7 @@ lev <- function(net_revenue, rotation_age, discount_rate, is_npv = FALSE) {
 #'
 #' @seealso \code{\link{lev}}
 #'
+#' @family lev
 #' @export
 bare_land_value <- function(net_revenue, rotation_age, discount_rate,
                              is_npv = FALSE) {

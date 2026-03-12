@@ -110,6 +110,7 @@
 #' @seealso \code{\link{yield_table}}, \code{\link{cash_flow_schedule}},
 #'   \code{\link{optimal_rotation_mp}}
 #'
+#' @family excel-export
 #' @export
 export_excel <- function(yield_tbl = NULL, schedule = NULL,
                           discount_rate = 0.06, regen_cost = 0,

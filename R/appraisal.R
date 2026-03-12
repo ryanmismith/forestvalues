@@ -70,9 +70,21 @@
 #' dr$rate       # ~9%
 #' dr$real_rate   # ~6.5%
 #'
+#' # Using the rate_components() benchmark dataset
+#' rc <- rate_components()
+#' dr <- discount_rate_buildup(
+#'   risk_free = rc$typical_mid[1],
+#'   inflation_premium = rc$typical_mid[2],
+#'   illiquidity_premium = rc$typical_mid[3],
+#'   management_risk = rc$typical_mid[4],
+#'   market_risk = rc$typical_mid[5],
+#'   property_specific = rc$typical_mid[6]
+#' )
+#'
 #' # Use the real rate in LEV calculation
 #' lev(52000, rotation_age = 40, discount_rate = dr$real_rate)
 #'
+#' @family appraisal
 #' @export
 discount_rate_buildup <- function(risk_free = 0.04,
                                     inflation_premium = 0.02,
@@ -183,13 +195,8 @@ discount_rate_buildup <- function(risk_free = 0.04,
 #' and Investment Analysis*. 3rd ed. Ch. 8.
 #'
 #' @examples
-#' yt <- yield_table(
-#'   ages = seq(10, 60, by = 10),
-#'   products = list(
-#'     sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
-#'     pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
-#'   )
-#' )
+#' # Using the pine_yields() example dataset
+#' yt <- pine_yields()
 #'
 #' # Bare land value
 #' timberland_value(yt, discount_rate = 0.06, regen_cost = 750, annual_cost = 50)
@@ -204,6 +211,7 @@ discount_rate_buildup <- function(risk_free = 0.04,
 #'
 #' @seealso \code{\link{mid_rotation_value}}, \code{\link{liquidation_value}},
 #'   \code{\link{lev}}, \code{\link{hold_vs_sell}}
+#' @family appraisal
 #' @export
 timberland_value <- function(yield_tbl, discount_rate, regen_cost = 0,
                               annual_cost = 0, current_age = NULL,
@@ -358,13 +366,8 @@ timberland_value <- function(yield_tbl, discount_rate, regen_cost = 0,
 #' (Optimal Holding Period for a Current Asset).
 #'
 #' @examples
-#' yt <- yield_table(
-#'   ages = seq(10, 60, by = 10),
-#'   products = list(
-#'     sawlog = data.frame(volume = c(0, 2, 5, 10, 16, 20), price = 250),
-#'     pulp = data.frame(volume = c(5, 12, 18, 22, 24, 25), price = 9)
-#'   )
-#' )
+#' # Using the pine_yields() example dataset
+#' yt <- pine_yields()
 #'
 #' # Should you sell a 25-year-old stand for $3,000/acre?
 #' hold_vs_sell(yt, discount_rate = 0.06, regen_cost = 750,
@@ -372,6 +375,7 @@ timberland_value <- function(yield_tbl, discount_rate, regen_cost = 0,
 #'              current_offer = 3000)
 #'
 #' @seealso \code{\link{timberland_value}}, \code{\link{mid_rotation_value}}
+#' @family appraisal
 #' @export
 hold_vs_sell <- function(yield_tbl, discount_rate, regen_cost = 0,
                           annual_cost = 0, current_age, current_offer = NULL,
@@ -490,6 +494,7 @@ hold_vs_sell <- function(yield_tbl, discount_rate, regen_cost = 0,
 #' }
 #'
 #' @seealso \code{\link{timberland_value}}
+#' @family appraisal
 #' @export
 tract_aggregate <- function(..., acres, weights = c("acres", "equal", "custom"),
                              custom_weights = NULL) {

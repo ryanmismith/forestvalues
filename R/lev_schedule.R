@@ -37,6 +37,7 @@
 #'
 #' @seealso \code{\link{lev}}, \code{\link{npv_schedule}}
 #'
+#' @family lev
 #' @export
 lev_schedule <- function(schedule, discount_rate, rotation_age) {
   rotation_npv <- npv_schedule(schedule, discount_rate, rotation_age)

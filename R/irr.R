@@ -45,6 +45,7 @@
 #'
 #' @seealso \code{\link{mirr}} for Modified IRR, \code{\link{npv}}
 #'
+#' @family irr
 #' @export
 irr <- function(cash_flows, times, interval = c(-0.5, 10)) {
   # Input validation
@@ -132,6 +133,7 @@ irr <- function(cash_flows, times, interval = c(-0.5, 10)) {
 #'
 #' @seealso \code{\link{irr}} for standard IRR
 #'
+#' @family irr
 #' @export
 mirr <- function(cash_flows, times, finance_rate, reinvest_rate) {
   # Input validation

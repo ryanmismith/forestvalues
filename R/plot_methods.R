@@ -10,6 +10,7 @@ NULL
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object.
+#' @family visualization
 #' @export
 plot.sensitivity_1way <- function(x, ...) {
   pname <- attr(x, "param_name")
@@ -33,6 +34,7 @@ plot.sensitivity_1way <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object (heatmap).
+#' @family visualization
 #' @export
 plot.sensitivity_2way <- function(x, ...) {
   # Expand matrix to long format
@@ -58,6 +60,7 @@ plot.sensitivity_2way <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object.
+#' @family visualization
 #' @export
 plot.tornado <- function(x, ...) {
   base_outcome <- attr(x, "base_outcome")
@@ -91,6 +94,7 @@ plot.tornado <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object (histogram).
+#' @family visualization
 #' @export
 plot.mc_forest <- function(x, ...) {
   df <- data.frame(value = x$values)
@@ -123,6 +127,7 @@ plot.mc_forest <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object.
+#' @family visualization
 #' @export
 plot.cash_flow_schedule <- function(x, ...) {
   p <- ggplot2::ggplot(x, ggplot2::aes(x = .data$year, y = .data$cumulative_npv)) +
@@ -146,6 +151,7 @@ plot.cash_flow_schedule <- function(x, ...) {
 #' @param ... Additional arguments (unused).
 #'
 #' @return A ggplot2 object.
+#' @family visualization
 #' @export
 plot.rotation_comparison <- function(x, ...) {
   # Reshape for faceted plot

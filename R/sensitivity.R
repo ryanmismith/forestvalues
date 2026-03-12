@@ -36,6 +36,7 @@
 #' @seealso \code{\link{sensitivity_2way}}, \code{\link{tornado_plot}},
 #'   \code{\link{breakeven_analysis}}
 #'
+#' @family sensitivity
 #' @export
 sensitivity_1way <- function(eval_fn, param_name, param_range, base_params) {
   if (!is.function(eval_fn)) stop("'eval_fn' must be a function", call. = FALSE)
@@ -95,6 +96,7 @@ sensitivity_1way <- function(eval_fn, param_name, param_range, base_params) {
 #'
 #' @seealso \code{\link{sensitivity_1way}}
 #'
+#' @family sensitivity
 #' @export
 sensitivity_2way <- function(eval_fn, param_x, range_x, param_y, range_y,
                               base_params) {
@@ -169,6 +171,7 @@ sensitivity_2way <- function(eval_fn, param_x, range_x, param_y, range_y,
 #'
 #' @seealso \code{\link{sensitivity_1way}}, \code{\link{breakeven_analysis}}
 #'
+#' @family sensitivity
 #' @export
 tornado_plot <- function(eval_fn, param_ranges, base_params) {
   if (!is.function(eval_fn)) stop("'eval_fn' must be a function", call. = FALSE)
@@ -261,6 +264,7 @@ tornado_plot <- function(eval_fn, param_ranges, base_params) {
 #' )
 #' cat("Breakeven price:", round(be$breakeven_value, 2), "$/unit\n")
 #'
+#' @family sensitivity
 #' @export
 breakeven_analysis <- function(eval_fn, param_name, base_params,
                                 target = 0, interval = NULL) {

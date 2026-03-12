@@ -89,11 +89,21 @@
 #' timber_tax(gross_revenue = 45000, cost_basis = 8000,
 #'            holding_period_years = 25, method = "631b")
 #'
+#' # Using the timber_sales() example dataset
+#' sales <- timber_sales()
+#' timber_tax(
+#'   gross_revenue = sales$gross_revenue[1],
+#'   cost_basis = sales$cost_basis[1],
+#'   holding_period_years = sales$holding_period_years[1],
+#'   method = "631b"
+#' )
+#'
 #' # Compare all three methods
 #' tax_comparison(45000, 8000, 25)
 #'
 #' @seealso \code{\link{tax_comparison}}, \code{\link{depletion_schedule}},
 #'   \code{\link{after_tax_npv}}
+#' @family timber-tax
 #' @export
 timber_tax <- function(gross_revenue, cost_basis, depletion_basis = NULL,
                         holding_period_years,
@@ -242,7 +252,12 @@ timber_tax <- function(gross_revenue, cost_basis, depletion_basis = NULL,
 #' depletion_schedule(initial_basis = 600000, initial_volume = 10000,
 #'                     harvests = harvests)
 #'
+#' # Using the pine_harvests() example dataset
+#' ph <- pine_harvests()
+#' depletion_schedule(ph$initial_basis, ph$initial_volume, ph$harvests)
+#'
 #' @seealso \code{\link{timber_tax}}
+#' @family timber-tax
 #' @export
 depletion_schedule <- function(initial_basis, initial_volume, harvests,
                                 method = c("cost", "percentage")) {
@@ -365,6 +380,7 @@ depletion_schedule <- function(initial_basis, initial_volume, harvests,
 #'               tax_method = "631b", holding_period = 30)
 #'
 #' @seealso \code{\link{timber_tax}}, \code{\link{npv}}
+#' @family timber-tax
 #' @export
 after_tax_npv <- function(cash_flows, times, discount_rate,
                            cost_basis = 0, tax_method = c("631b", "631a", "ordinary"),
@@ -481,6 +497,7 @@ after_tax_npv <- function(cash_flows, times, discount_rate,
 #' tc$methods
 #'
 #' @seealso \code{\link{timber_tax}}
+#' @family timber-tax
 #' @export
 tax_comparison <- function(gross_revenue, cost_basis, holding_period_years,
                             marginal_rate = 0.24, cap_gains_rate = 0.15,
@@ -604,6 +621,7 @@ tax_comparison <- function(gross_revenue, cost_basis, holding_period_years,
 #' rd$amortization_schedule
 #'
 #' @seealso \code{\link{timber_tax}}, \code{\link{after_tax_npv}}
+#' @family timber-tax
 #' @export
 reforestation_deduction <- function(total_cost, tax_year = 2025,
                                      marginal_rate = 0.24,

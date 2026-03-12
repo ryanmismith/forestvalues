@@ -19,6 +19,7 @@
 #' # Vectorized: multiple cash flows
 #' discount(c(50000, 100000), 0.06, c(20, 40))
 #'
+#' @family time-value
 #' @export
 discount <- function(future_value, rate, time) {
   if (!is.numeric(future_value)) stop("'future_value' must be numeric", call. = FALSE)
@@ -47,6 +48,7 @@ discount <- function(future_value, rate, time) {
 #' # FV of $5,000 planting cost after 30 years at 6%
 #' compound(5000, 0.06, 30)
 #'
+#' @family time-value
 #' @export
 compound <- function(present_value, rate, time) {
   if (!is.numeric(present_value)) stop("'present_value' must be numeric", call. = FALSE)

@@ -70,6 +70,7 @@
 #'
 #' @seealso \code{\link{rotation_comparison}}, \code{\link{lev}}
 #'
+#' @family rotation
 #' @export
 optimal_rotation <- function(yield_fn, stumpage_price, regen_cost,
                               annual_cost = 0, discount_rate,
@@ -170,6 +171,7 @@ optimal_rotation <- function(yield_fn, stumpage_price, regen_cost,
 #'
 #' @seealso \code{\link{optimal_rotation}}
 #'
+#' @family rotation
 #' @export
 rotation_comparison <- function(yield_fn, stumpage_price, regen_cost,
                                  annual_cost = 0, discount_rate,

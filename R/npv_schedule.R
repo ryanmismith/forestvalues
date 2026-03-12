@@ -49,6 +49,7 @@
 #' )
 #' npv_schedule(schedule, discount_rate = 0.06, time_horizon = 40)
 #'
+#' @family npv
 #' @export
 npv_schedule <- function(schedule, discount_rate, time_horizon) {
   # Input validation

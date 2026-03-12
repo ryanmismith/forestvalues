@@ -35,6 +35,14 @@
 #'   discount_rate = 0.06
 #' )
 #'
+#' # Using the pine management schedule dataset
+#' sched <- pine_schedule()
+#' npv(
+#'   cash_flows = sched$amount[sched$frequency == "once"],
+#'   times = sched$year[sched$frequency == "once"],
+#'   discount_rate = 0.06
+#' )
+#'
 #' # Multiple activities: planting, PCT, thinning, final harvest
 #' npv(
 #'   cash_flows = c(-750, -800, 2500, 6600),
@@ -42,6 +50,7 @@
 #'   discount_rate = 0.06
 #' )
 #'
+#' @family npv
 #' @export
 npv <- function(cash_flows, times, discount_rate) {
   # Input validation
@@ -99,6 +108,7 @@ npv <- function(cash_flows, times, discount_rate) {
 #' )
 #' carbon$incremental_npv
 #'
+#' @family npv
 #' @export
 incremental_npv <- function(alt_flows, alt_times, base_flows, base_times,
                              discount_rate) {

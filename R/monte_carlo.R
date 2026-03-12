@@ -61,6 +61,7 @@
 #' @seealso \code{\link{stochastic_prices}}, \code{\link{risk_metrics}},
 #'   \code{\link{simulate_yield}}
 #'
+#' @family stochastic
 #' @export
 monte_carlo <- function(eval_fn, base_params, stochastic_params,
                          n_sims = 10000, seed = NULL) {
@@ -115,6 +116,7 @@ monte_carlo <- function(eval_fn, base_params, stochastic_params,
 }
 
 
+#' @family stochastic
 #' @export
 summary.mc_forest <- function(object, ...) {
   cat("Monte Carlo Forest Economics Simulation\n")
@@ -226,6 +228,7 @@ draw_from_dist <- function(spec) {
 #'
 #' @seealso \code{\link{monte_carlo}}, \code{\link{simulate_yield}}
 #'
+#' @family stochastic
 #' @export
 stochastic_prices <- function(n_periods, initial_price,
                                process = c("gbm", "ou"),
@@ -306,6 +309,7 @@ stochastic_prices <- function(n_periods, initial_price,
 #' rowMeans(sim_yields)
 #' yield(c(20, 30, 40))
 #'
+#' @family stochastic
 #' @export
 simulate_yield <- function(yield_fn, ages, cv = 0.10, n_sims = 1000,
                             seed = NULL) {
@@ -361,6 +365,7 @@ simulate_yield <- function(yield_fn, ages, cv = 0.10, n_sims = 1000,
 #' sims <- rnorm(10000, mean = 5000, sd = 3000)
 #' risk_metrics(sims)
 #'
+#' @family stochastic
 #' @export
 risk_metrics <- function(simulations, threshold = 0, confidence = 0.95) {
   if (inherits(simulations, "mc_forest")) {
