@@ -68,6 +68,15 @@ export(sensitivity_2way)
 export(tornado_plot)
 export(breakeven_analysis)
 
+# Example datasets
+export(pine_yields)
+export(hardwood_yields)
+export(pine_schedule)
+export(timber_sales)
+export(pine_harvests)
+export(comparable_sales_data)
+export(rate_components)
+
 # S3 methods
 S3method(summary, mc_forest)
 S3method(plot, sensitivity_1way)
