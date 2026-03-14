@@ -85,45 +85,45 @@ npv_schedule <- function(schedule, discount_rate, time_horizon) {
     stop("'period_length' must be specified for all periodic cash flows", call. = FALSE)
   }
 
-  r <- discount_rate
+  rate <- discount_rate
   total_pv <- 0
 
   for (i in seq_len(nrow(schedule))) {
-    amt <- schedule$amount[i]
-    yr <- schedule$year[i]
-    freq <- schedule$frequency[i]
-    remaining <- time_horizon - yr
+    amount <- schedule$amount[i]
+    start_year <- schedule$year[i]
+    frequency <- schedule$frequency[i]
+    years_remaining <- time_horizon - start_year
 
-    if (remaining < 0) next  # skip flows beyond time horizon
+    if (years_remaining < 0) next  # skip flows beyond time horizon
 
-    if (freq == "once") {
+    if (frequency == "once") {
       # Simple discounting
-      total_pv <- total_pv + amt / (1 + r)^yr
+      total_pv <- total_pv + amount / (1 + rate)^start_year
 
-    } else if (freq == "annual") {
-      # Present value of annual annuity starting at year 'yr' for 'remaining' years
+    } else if (frequency == "annual") {
+      # Present value of annual annuity starting at 'start_year'
       # PV at start of annuity = A * ((1+r)^n - 1) / (r * (1+r)^n)
       # Then discount back to year 0
-      if (r == 0) {
-        pv_at_start <- amt * (remaining + 1)
+      if (rate == 0) {
+        pv_at_start <- amount * (years_remaining + 1)
       } else {
-        n <- remaining + 1  # includes the start year
-        pv_at_start <- amt * ((1 + r)^n - 1) / (r * (1 + r)^n)
+        n_payments <- years_remaining + 1  # includes the start year
+        pv_at_start <- amount * ((1 + rate)^n_payments - 1) / (rate * (1 + rate)^n_payments)
       }
-      total_pv <- total_pv + pv_at_start / (1 + r)^yr
+      total_pv <- total_pv + pv_at_start / (1 + rate)^start_year
 
-    } else if (freq == "periodic") {
-      p <- schedule$period_length[i]
-      # Number of payments within remaining time
-      n <- remaining
-      if (r == 0) {
-        pv_at_start <- amt * (floor(n / p) + 1)
+    } else if (frequency == "periodic") {
+      period_length <- schedule$period_length[i]
+      # Number of years within remaining time
+      n_years <- years_remaining
+      if (rate == 0) {
+        pv_at_start <- amount * (floor(n_years / period_length) + 1)
       } else {
         # PV of periodic series: A * ((1+r)^n - 1) / (((1+r)^p - 1) * (1+r)^n)
-        pv_at_start <- amt * ((1 + r)^n - 1) /
-          (((1 + r)^p - 1) * (1 + r)^n)
+        pv_at_start <- amount * ((1 + rate)^n_years - 1) /
+          (((1 + rate)^period_length - 1) * (1 + rate)^n_years)
       }
-      total_pv <- total_pv + pv_at_start / (1 + r)^yr
+      total_pv <- total_pv + pv_at_start / (1 + rate)^start_year
     }
   }
 

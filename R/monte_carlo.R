@@ -79,9 +79,9 @@ monte_carlo <- function(eval_fn, base_params, stochastic_params,
     params <- base_params
 
     # Draw from each stochastic parameter's distribution
-    for (pname in names(stochastic_params)) {
-      sp <- stochastic_params[[pname]]
-      params[[pname]] <- draw_from_dist(sp)
+    for (param_name in names(stochastic_params)) {
+      dist_spec <- stochastic_params[[param_name]]
+      params[[param_name]] <- draw_from_dist(dist_spec)
     }
 
     results[i] <- tryCatch(

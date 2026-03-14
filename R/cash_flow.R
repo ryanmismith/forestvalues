@@ -64,30 +64,30 @@ cash_flow_schedule <- function(activities, time_horizon, discount_rate) {
   annual_flows <- rep(0, length(years))
 
   for (i in seq_len(nrow(activities))) {
-    amt <- activities$amount[i]
-    yr <- activities$year[i]
-    freq <- activities$frequency[i]
+    amount <- activities$amount[i]
+    start_year <- activities$year[i]
+    frequency <- activities$frequency[i]
 
-    if (freq == "once") {
-      if (yr >= 0 && yr <= time_horizon) {
-        idx <- yr + 1  # 0-indexed year -> 1-indexed position
-        annual_flows[idx] <- annual_flows[idx] + amt
+    if (frequency == "once") {
+      if (start_year >= 0 && start_year <= time_horizon) {
+        year_index <- start_year + 1  # 0-indexed year -> 1-indexed position
+        annual_flows[year_index] <- annual_flows[year_index] + amount
       }
 
-    } else if (freq == "annual") {
-      for (y in yr:time_horizon) {
-        idx <- y + 1
-        annual_flows[idx] <- annual_flows[idx] + amt
+    } else if (frequency == "annual") {
+      for (year in start_year:time_horizon) {
+        year_index <- year + 1
+        annual_flows[year_index] <- annual_flows[year_index] + amount
       }
 
-    } else if (freq == "periodic") {
-      p <- activities$period_length[i]
-      if (is.na(p)) stop("'period_length' required for periodic activities", call. = FALSE)
-      y <- yr
-      while (y <= time_horizon) {
-        idx <- y + 1
-        annual_flows[idx] <- annual_flows[idx] + amt
-        y <- y + p
+    } else if (frequency == "periodic") {
+      period_length <- activities$period_length[i]
+      if (is.na(period_length)) stop("'period_length' required for periodic activities", call. = FALSE)
+      year <- start_year
+      while (year <= time_horizon) {
+        year_index <- year + 1
+        annual_flows[year_index] <- annual_flows[year_index] + amount
+        year <- year + period_length
       }
     }
   }

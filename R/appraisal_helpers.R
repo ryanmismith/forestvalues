@@ -80,18 +80,18 @@ liquidation_value <- function(yield_tbl, current_age, logging_cost = 0,
     stringsAsFactors = FALSE
   )
 
-  for (pn in yield_tbl$product_names) {
-    vol <- yield_tbl$product_fns[[pn]](current_age)
-    vol <- max(vol, 0)  # no negative volumes
+  for (product_name in yield_tbl$product_names) {
+    volume <- yield_tbl$product_fns[[product_name]](current_age)
+    volume <- max(volume, 0)  # no negative volumes
 
-    pdata <- yield_tbl$products[[pn]]
-    price <- if ("price" %in% names(pdata)) pdata$price[1] else 0
+    product_data <- yield_tbl$products[[product_name]]
+    price <- if ("price" %in% names(product_data)) product_data$price[1] else 0
 
     product_detail <- rbind(product_detail, data.frame(
-      product = pn,
-      volume = vol,
+      product = product_name,
+      volume = volume,
       price = price,
-      gross_value = vol * price,
+      gross_value = volume * price,
       stringsAsFactors = FALSE
     ))
   }
@@ -206,31 +206,31 @@ mid_rotation_value <- function(yield_tbl, current_age, discount_rate,
   }
 
   years_to_harvest <- harvest_age - current_age
-  r <- discount_rate
+  rate <- discount_rate
 
   # Revenue at harvest age
   harvest_revenue <- yield_tbl$total_value_fn(harvest_age)
 
   # PV of harvest revenue discounted to today
-  timber_value <- harvest_revenue / (1 + r)^years_to_harvest
+  timber_value <- harvest_revenue / (1 + rate)^years_to_harvest
 
   # LEV at harvest age (bare land value for perpetual management)
   # We need the single-rotation NPV at optimal age to compute LEV
-  pv_rev_at_zero <- harvest_revenue / (1 + r)^harvest_age
-  pv_annual_at_zero <- if (annual_cost > 0 && r > 0) {
-    annual_cost * ((1 + r)^harvest_age - 1) / (r * (1 + r)^harvest_age)
+  revenue_pv_at_zero <- harvest_revenue / (1 + rate)^harvest_age
+  annual_cost_pv_at_zero <- if (annual_cost > 0 && rate > 0) {
+    annual_cost * ((1 + rate)^harvest_age - 1) / (rate * (1 + rate)^harvest_age)
   } else {
     annual_cost * harvest_age
   }
-  rotation_npv <- pv_rev_at_zero - regen_cost - pv_annual_at_zero
-  lev_at_harvest <- lev(rotation_npv, harvest_age, r, is_npv = TRUE)
+  rotation_npv <- revenue_pv_at_zero - regen_cost - annual_cost_pv_at_zero
+  lev_at_harvest <- lev(rotation_npv, harvest_age, rate, is_npv = TRUE)
 
   # PV of LEV discounted from harvest to today
-  land_value <- lev_at_harvest / (1 + r)^years_to_harvest
+  land_value <- lev_at_harvest / (1 + rate)^years_to_harvest
 
   # PV of annual costs from now to harvest
-  annual_cost_pv <- if (annual_cost > 0 && r > 0) {
-    annual_cost * ((1 + r)^years_to_harvest - 1) / (r * (1 + r)^years_to_harvest)
+  annual_cost_pv <- if (annual_cost > 0 && rate > 0) {
+    annual_cost * ((1 + rate)^years_to_harvest - 1) / (rate * (1 + rate)^years_to_harvest)
   } else {
     annual_cost * years_to_harvest
   }

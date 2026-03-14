@@ -101,37 +101,36 @@ optimal_rotation <- function(yield_fn, stumpage_price, regen_cost,
     stop("'discount_rate' must be a single numeric value", call. = FALSE)
   }
 
-  r <- discount_rate
+  rate <- discount_rate
 
   objective <- function(age) {
-    vol <- yield_fn(age)
-    revenue <- vol * stumpage_price
+    volume <- yield_fn(age)
+    revenue <- volume * stumpage_price
 
     if (criterion == "mai") {
-      return(vol / age)
+      return(volume / age)
     } else if (criterion == "npv") {
       # Single rotation NPV
-      pv_revenue <- revenue / (1 + r)^age
-      pv_regen <- regen_cost  # at year 0
-      if (annual_cost > 0 && r > 0) {
-        pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+      revenue_pv <- revenue / (1 + rate)^age
+      regen_pv <- regen_cost  # at year 0
+      if (annual_cost > 0 && rate > 0) {
+        annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
       } else {
-        pv_annual <- annual_cost * age
+        annual_cost_pv <- annual_cost * age
       }
-      return(pv_revenue - pv_regen - pv_annual)
+      return(revenue_pv - regen_pv - annual_cost_pv)
     } else {
-      # LEV criterion
-      # NPV of single rotation
-      pv_revenue <- revenue / (1 + r)^age
-      pv_regen <- regen_cost
-      if (annual_cost > 0 && r > 0) {
-        pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+      # LEV criterion (Faustmann)
+      revenue_pv <- revenue / (1 + rate)^age
+      regen_pv <- regen_cost
+      if (annual_cost > 0 && rate > 0) {
+        annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
       } else {
-        pv_annual <- annual_cost * age
+        annual_cost_pv <- annual_cost * age
       }
-      rotation_npv <- pv_revenue - pv_regen - pv_annual
-      # Convert to LEV
-      return(rotation_npv * (1 + r)^age / ((1 + r)^age - 1))
+      rotation_npv <- revenue_pv - regen_pv - annual_cost_pv
+      # Convert single-rotation NPV to land expectation value
+      return(rotation_npv * (1 + rate)^age / ((1 + rate)^age - 1))
     }
   }
 
@@ -186,7 +185,7 @@ rotation_comparison <- function(yield_fn, stumpage_price, regen_cost,
                                   method = "natural")
   }
 
-  r <- discount_rate
+  rate <- discount_rate
 
   results <- data.frame(
     age = ages,
@@ -199,26 +198,26 @@ rotation_comparison <- function(yield_fn, stumpage_price, regen_cost,
 
   for (i in seq_along(ages)) {
     age <- ages[i]
-    vol <- yield_fn(age)
-    rev <- vol * stumpage_price
+    volume <- yield_fn(age)
+    revenue <- volume * stumpage_price
 
-    results$volume[i] <- vol
-    results$mai[i] <- vol / age
-    results$revenue[i] <- rev
+    results$volume[i] <- volume
+    results$mai[i] <- volume / age
+    results$revenue[i] <- revenue
 
     # NPV
-    pv_rev <- rev / (1 + r)^age
-    pv_regen <- regen_cost
-    if (annual_cost > 0 && r > 0) {
-      pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+    revenue_pv <- revenue / (1 + rate)^age
+    regen_pv <- regen_cost
+    if (annual_cost > 0 && rate > 0) {
+      annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
     } else {
-      pv_annual <- annual_cost * age
+      annual_cost_pv <- annual_cost * age
     }
-    rot_npv <- pv_rev - pv_regen - pv_annual
-    results$npv[i] <- rot_npv
+    rotation_npv <- revenue_pv - regen_pv - annual_cost_pv
+    results$npv[i] <- rotation_npv
 
-    # LEV
-    results$lev[i] <- rot_npv * (1 + r)^age / ((1 + r)^age - 1)
+    # LEV (land expectation value)
+    results$lev[i] <- rotation_npv * (1 + rate)^age / ((1 + rate)^age - 1)
   }
 
   class(results) <- c("rotation_comparison", "data.frame")

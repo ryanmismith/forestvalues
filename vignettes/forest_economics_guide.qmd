@@ -13,7 +13,7 @@ format:
     code-summary: "Show code"
     code-tools: true
     theme:
-      light: flatly
+      light: minty
       dark: darkly
     mainfont: "Palatino Linotype, Book Antiqua, Georgia, serif"
     monofont: "Fira Code, Consolas, Monaco, monospace"

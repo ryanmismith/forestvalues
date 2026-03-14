@@ -93,15 +93,14 @@ stumpage_value <- function(species, volume, product_class = "sawlog",
     if (any(match_rows)) {
       price <- price_table$price[which(match_rows)[1]]
       results$unit_price[i] <- price
-      if (product_class[i] == "sawlog") {
-        # Volume in MBF (divide by 1000 if in board feet)
-        results$total_value[i] <- volume[i] * price
-      } else {
-        results$total_value[i] <- volume[i] * price
-      }
+      # Unit conversion is handled by the price table: sawlog prices are $/MBF,
+      # pulp prices are $/ton. Volume must match the price table's unit.
+      results$total_value[i] <- volume[i] * price
     } else {
-      warning("No price found for species '", species[i], "' product '",
-              product_class[i], "'. Setting value to 0.", call. = FALSE)
+      warning("No price found for species '", species[i], "' (product class: '",
+              product_class[i], "'). Check species code — e.g., 'SM' for sugar maple, ",
+              "'RO' for red oak. See default_price_table() for supported codes. ",
+              "Setting value to $0.", call. = FALSE)
       results$unit_price[i] <- 0
       results$total_value[i] <- 0
     }
@@ -185,7 +184,8 @@ update_prices <- function(price_table, inflation_rate, base_year, target_year) {
     stop("'price_table' must be a data.frame", call. = FALSE)
   }
   if (!is.numeric(inflation_rate) || length(inflation_rate) != 1) {
-    stop("'inflation_rate' must be a single numeric value", call. = FALSE)
+    stop("'inflation_rate' must be a single numeric value as a decimal (e.g., 0.03 for 3%)",
+         call. = FALSE)
   }
 
   years <- target_year - base_year
@@ -206,8 +206,8 @@ default_price_table <- function() {
   # Extracted from the original ValueEstimate.R species lookup table
 
   # Source: Maine Forest Service 2019 Stumpage Price Report
-  # Sawlog prices in $/MBF, Pulp prices in $/lb (converted to $/ton = price * 2000)
-  # Note: Pulp prices here are $/ton for consistency
+  # Sawlog prices: $/MBF (thousand board feet). Volume input should be in MBF.
+  # Pulp prices: $/ton. Volume input should be in tons.
 
   sawlog <- data.frame(
     species = c("AB", "AE", "AS", "BA", "BC", "BF", "BO", "BP", "BS", "BT",

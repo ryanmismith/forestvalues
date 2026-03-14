@@ -80,55 +80,50 @@ yield_table <- function(ages, products, product_units = NULL) {
 
   product_names <- names(products)
   product_fns <- list()       # spline functions for volume
-  value_fns <- list()         # spline functions for value (vol * price)
+  value_fns <- list()         # spline functions for value (volume * price)
   all_data <- data.frame()
 
-  for (pname in product_names) {
-    pdata <- products[[pname]]
+  for (product_name in product_names) {
+    product_data <- products[[product_name]]
 
-    if (!is.data.frame(pdata)) {
-      stop("products$", pname, " must be a data.frame", call. = FALSE)
+    if (!is.data.frame(product_data)) {
+      stop("products$", product_name, " must be a data.frame", call. = FALSE)
     }
-    if (!"volume" %in% names(pdata)) {
-      stop("products$", pname, " must have a 'volume' column", call. = FALSE)
+    if (!"volume" %in% names(product_data)) {
+      stop("products$", product_name, " must have a 'volume' column", call. = FALSE)
     }
-    if (nrow(pdata) != length(ages)) {
-      stop("products$", pname, " must have ", length(ages),
+    if (nrow(product_data) != length(ages)) {
+      stop("products$", product_name, " must have ", length(ages),
            " rows (one per age)", call. = FALSE)
     }
 
-    vol <- pdata$volume
+    volume <- product_data$volume
 
     # Price: from data or NA
-    if ("price" %in% names(pdata)) {
-      price <- pdata$price
-      if (length(unique(price)) == 1) {
-        # Constant price — simple
-        price_val <- price[1]
+    if ("price" %in% names(product_data)) {
+      raw_price <- product_data$price
+      if (length(unique(raw_price)) == 1) {
+        price_per_unit <- raw_price[1]
       } else {
-        price_val <- price  # age-varying prices
+        price_per_unit <- raw_price  # age-varying prices
       }
     } else {
-      price_val <- NA
+      price_per_unit <- NA
     }
 
     # Build spline for volume
-    vol_fn <- stats::splinefun(ages, vol, method = "natural")
-    product_fns[[pname]] <- vol_fn
+    volume_spline <- stats::splinefun(ages, volume, method = "natural")
+    product_fns[[product_name]] <- volume_spline
 
     # Build value spline if price available
-    if (!all(is.na(price_val))) {
-      if (length(price_val) == 1) {
-        value_at_ages <- vol * price_val
-      } else {
-        value_at_ages <- vol * price_val
-      }
-      value_fns[[pname]] <- stats::splinefun(ages, value_at_ages, method = "natural")
+    if (!all(is.na(price_per_unit))) {
+      value_at_ages <- volume * price_per_unit
+      value_fns[[product_name]] <- stats::splinefun(ages, value_at_ages, method = "natural")
     }
 
     # Unit
-    unit <- if (!is.null(product_units) && pname %in% names(product_units)) {
-      product_units[[pname]]
+    unit <- if (!is.null(product_units) && product_name %in% names(product_units)) {
+      product_units[[product_name]]
     } else {
       "units"
     }
@@ -136,19 +131,14 @@ yield_table <- function(ages, products, product_units = NULL) {
     # Long-format data
     row_data <- data.frame(
       age = ages,
-      product = pname,
-      volume = vol,
+      product = product_name,
+      volume = volume,
       unit = unit,
       stringsAsFactors = FALSE
     )
-    if (!all(is.na(price_val))) {
-      if (length(price_val) == 1) {
-        row_data$price <- price_val
-        row_data$value <- vol * price_val
-      } else {
-        row_data$price <- price_val
-        row_data$value <- vol * price_val
-      }
+    if (!all(is.na(price_per_unit))) {
+      row_data$price <- price_per_unit
+      row_data$value <- volume * price_per_unit
     } else {
       row_data$price <- NA_real_
       row_data$value <- NA_real_
@@ -191,16 +181,16 @@ print.yield_table <- function(x, ...) {
       "(", length(x$ages), "observations)\n\n")
 
   # Print summary by product
-  for (pname in x$product_names) {
-    pdata <- x$data[x$data$product == pname, ]
-    unit <- pdata$unit[1]
-    cat(pname, " (", unit, "):\n", sep = "")
-    cat("  Volume range:", round(min(pdata$volume), 1), "-",
-        round(max(pdata$volume), 1), "\n")
-    if (!all(is.na(pdata$price))) {
-      cat("  Price:", round(unique(stats::na.omit(pdata$price))[1], 2), "\n")
-      cat("  Value range: $", round(min(pdata$value, na.rm = TRUE), 2), " - $",
-          round(max(pdata$value, na.rm = TRUE), 2), "\n")
+  for (product_name in x$product_names) {
+    product_data <- x$data[x$data$product == product_name, ]
+    unit <- product_data$unit[1]
+    cat(product_name, " (", unit, "):\n", sep = "")
+    cat("  Volume range:", round(min(product_data$volume), 1), "-",
+        round(max(product_data$volume), 1), "\n")
+    if (!all(is.na(product_data$price))) {
+      cat("  Price:", round(unique(stats::na.omit(product_data$price))[1], 2), "\n")
+      cat("  Value range: $", round(min(product_data$value, na.rm = TRUE), 2), " - $",
+          round(max(product_data$value, na.rm = TRUE), 2), "\n")
     }
   }
 
@@ -317,7 +307,7 @@ optimal_rotation_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
     age_range <- range(yield_tbl$ages)
   }
 
-  r <- discount_rate
+  rate <- discount_rate
   total_value_fn <- yield_tbl$total_value_fn
 
   objective <- function(age) {
@@ -325,39 +315,39 @@ optimal_rotation_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
 
     if (criterion == "mai") {
       # Total volume across products / age
-      total_vol <- 0
-      for (vfn in yield_tbl$product_fns) {
-        v <- vfn(age)
-        if (v > 0) total_vol <- total_vol + v
+      total_volume <- 0
+      for (volume_fn in yield_tbl$product_fns) {
+        vol_at_age <- volume_fn(age)
+        if (vol_at_age > 0) total_volume <- total_volume + vol_at_age
       }
-      return(total_vol / age)
+      return(total_volume / age)
 
     } else if (criterion == "npv") {
-      pv_revenue <- revenue / (1 + r)^age
-      pv_regen <- regen_cost
-      if (annual_cost > 0 && r > 0) {
-        pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+      revenue_pv <- revenue / (1 + rate)^age
+      regen_pv <- regen_cost
+      if (annual_cost > 0 && rate > 0) {
+        annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
       } else {
-        pv_annual <- annual_cost * age
+        annual_cost_pv <- annual_cost * age
       }
-      return(pv_revenue - pv_regen - pv_annual)
+      return(revenue_pv - regen_pv - annual_cost_pv)
 
     } else {
-      # LEV
-      pv_revenue <- revenue / (1 + r)^age
-      pv_regen <- regen_cost
-      if (annual_cost > 0 && r > 0) {
-        pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+      # LEV (Faustmann)
+      revenue_pv <- revenue / (1 + rate)^age
+      regen_pv <- regen_cost
+      if (annual_cost > 0 && rate > 0) {
+        annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
       } else {
-        pv_annual <- annual_cost * age
+        annual_cost_pv <- annual_cost * age
       }
-      rot_npv <- pv_revenue - pv_regen - pv_annual
-      return(rot_npv * (1 + r)^age / ((1 + r)^age - 1))
+      rotation_npv <- revenue_pv - regen_pv - annual_cost_pv
+      return(rotation_npv * (1 + rate)^age / ((1 + rate)^age - 1))
     }
   }
 
   result <- stats::optimize(objective, interval = age_range, maximum = TRUE)
-  opt_age <- result$maximum
+  optimal_age <- result$maximum
 
   # Product detail at optimal age
   detail <- data.frame(
@@ -367,20 +357,20 @@ optimal_rotation_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
     stringsAsFactors = FALSE
   )
   for (i in seq_along(yield_tbl$product_names)) {
-    pname <- yield_tbl$product_names[i]
-    vol <- yield_tbl$product_fns[[pname]](opt_age)
-    vol <- max(vol, 0)
-    detail$volume[i] <- vol
-    if (pname %in% names(yield_tbl$value_fns)) {
-      detail$value[i] <- yield_tbl$value_fns[[pname]](opt_age)
+    product_name <- yield_tbl$product_names[i]
+    volume <- yield_tbl$product_fns[[product_name]](optimal_age)
+    volume <- max(volume, 0)
+    detail$volume[i] <- volume
+    if (product_name %in% names(yield_tbl$value_fns)) {
+      detail$value[i] <- yield_tbl$value_fns[[product_name]](optimal_age)
     }
   }
 
   list(
-    optimal_age = opt_age,
+    optimal_age = optimal_age,
     value_at_optimum = result$objective,
     criterion = criterion,
-    revenue_at_optimum = total_value_fn(opt_age),
+    revenue_at_optimum = total_value_fn(optimal_age),
     product_detail = detail
   )
 }
@@ -423,46 +413,46 @@ rotation_comparison_mp <- function(yield_tbl, regen_cost, annual_cost = 0,
     ages <- seq(min(yield_tbl$ages), max(yield_tbl$ages), by = 1)
   }
 
-  r <- discount_rate
-  pnames <- yield_tbl$product_names
+  rate <- discount_rate
+  product_names <- yield_tbl$product_names
 
   # Base columns
   results <- data.frame(age = ages, total_revenue = NA_real_,
                          npv = NA_real_, lev = NA_real_)
 
   # Product columns
-  for (pn in pnames) {
-    results[[paste0(pn, "_vol")]] <- NA_real_
-    results[[paste0(pn, "_val")]] <- NA_real_
+  for (product_name in product_names) {
+    results[[paste0(product_name, "_vol")]] <- NA_real_
+    results[[paste0(product_name, "_val")]] <- NA_real_
   }
 
   for (i in seq_along(ages)) {
     age <- ages[i]
-    rev <- yield_tbl$total_value_fn(age)
-    results$total_revenue[i] <- rev
+    revenue <- yield_tbl$total_value_fn(age)
+    results$total_revenue[i] <- revenue
 
     # Product detail
-    for (pn in pnames) {
-      vol <- yield_tbl$product_fns[[pn]](age)
-      vol <- max(vol, 0)
-      results[[paste0(pn, "_vol")]][i] <- vol
-      if (pn %in% names(yield_tbl$value_fns)) {
-        val <- yield_tbl$value_fns[[pn]](age)
-        results[[paste0(pn, "_val")]][i] <- max(val, 0)
+    for (product_name in product_names) {
+      volume <- yield_tbl$product_fns[[product_name]](age)
+      volume <- max(volume, 0)
+      results[[paste0(product_name, "_vol")]][i] <- volume
+      if (product_name %in% names(yield_tbl$value_fns)) {
+        value <- yield_tbl$value_fns[[product_name]](age)
+        results[[paste0(product_name, "_val")]][i] <- max(value, 0)
       }
     }
 
     # NPV
-    pv_rev <- rev / (1 + r)^age
-    pv_regen <- regen_cost
-    if (annual_cost > 0 && r > 0) {
-      pv_annual <- annual_cost * ((1 + r)^age - 1) / (r * (1 + r)^age)
+    revenue_pv <- revenue / (1 + rate)^age
+    regen_pv <- regen_cost
+    if (annual_cost > 0 && rate > 0) {
+      annual_cost_pv <- annual_cost * ((1 + rate)^age - 1) / (rate * (1 + rate)^age)
     } else {
-      pv_annual <- annual_cost * age
+      annual_cost_pv <- annual_cost * age
     }
-    rot_npv <- pv_rev - pv_regen - pv_annual
-    results$npv[i] <- rot_npv
-    results$lev[i] <- rot_npv * (1 + r)^age / ((1 + r)^age - 1)
+    rotation_npv <- revenue_pv - regen_pv - annual_cost_pv
+    results$npv[i] <- rotation_npv
+    results$lev[i] <- rotation_npv * (1 + rate)^age / ((1 + rate)^age - 1)
   }
 
   results

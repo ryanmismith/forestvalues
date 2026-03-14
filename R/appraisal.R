@@ -387,13 +387,13 @@ hold_vs_sell <- function(yield_tbl, discount_rate, regen_cost = 0,
     stop("'current_age' must be a non-negative number", call. = FALSE)
   }
 
-  r <- discount_rate
-  if (is.null(reinvest_rate)) reinvest_rate <- r
+  rate <- discount_rate
+  if (is.null(reinvest_rate)) reinvest_rate <- rate
 
   # Hold value = mid-rotation value (anticipated harvest + land + carry costs)
-  mrv <- mid_rotation_value(yield_tbl, current_age, r, regen_cost,
-                             annual_cost, harvest_age = NULL)
-  hold_value <- mrv$total_value
+  mid_rot <- mid_rotation_value(yield_tbl, current_age, rate, regen_cost,
+                                 annual_cost, harvest_age = NULL)
+  hold_value <- mid_rot$total_value
 
   # Sell value = current offer or liquidation
   if (is.null(current_offer)) {
@@ -413,14 +413,13 @@ hold_vs_sell <- function(yield_tbl, discount_rate, regen_cost = 0,
   breakeven_price <- hold_value
 
   # Breakeven reinvestment rate: what rate on proceeds = hold value?
-  years <- mrv$years_to_harvest
-  if (is.null(holding_period)) holding_period <- years
+  years_remaining <- mid_rot$years_to_harvest
+  if (is.null(holding_period)) holding_period <- years_remaining
 
   # Solve: sell_value * (1 + r_reinvest)^n / (1+r)^n = hold_value
-  # => (1 + r_reinvest)^n = hold_value * (1+r)^n / sell_value
   breakeven_reinvest <- if (sell_value > 0 && holding_period > 0) {
     tryCatch({
-      target_fv <- hold_value * (1 + r)^holding_period
+      target_fv <- hold_value * (1 + rate)^holding_period
       (target_fv / sell_value)^(1 / holding_period) - 1
     }, error = function(e) NA_real_)
   } else {
@@ -436,9 +435,9 @@ hold_vs_sell <- function(yield_tbl, discount_rate, regen_cost = 0,
       advantage_pct = advantage_pct,
       breakeven_price = breakeven_price,
       breakeven_rate = breakeven_reinvest,
-      years_to_harvest = years,
+      years_to_harvest = years_remaining,
       holding_period = holding_period,
-      harvest_revenue = mrv$harvest_revenue
+      harvest_revenue = mid_rot$harvest_revenue
     ),
     class = "hold_vs_sell"
   )
