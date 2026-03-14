@@ -181,7 +181,13 @@ draw_from_dist <- function(spec) {
 #' **OU** (Ornstein-Uhlenbeck): Prices revert toward a long-run mean. More
 #' realistic for commodity prices that are mean-reverting due to supply
 #' adjustments (Brazee & Mendelsohn 1988; Thomson 1992; Insley 2002).
-#' \deqn{dP = \kappa(\theta - P) \, dt + \sigma \, dW}
+#' Implemented as an *exponential* (geometric) OU process to guarantee
+#' positive prices:
+#' \deqn{d\log P = \kappa(\mu^* - \log P) \, dt + \sigma_x \, dW}
+#' where \eqn{\mu^* = \log(\theta) - \sigma_x^2 / (4\kappa)} is the
+#' bias-corrected log-mean (Jensen's inequality correction) ensuring
+#' \eqn{E[P_\infty] = \theta}. The log-space volatility is derived from
+#' the user-supplied absolute volatility as \eqn{\sigma_x = \sigma / \theta}.
 #'
 #' **Empirical parameter guidance (Southern pine sawtimber):**
 #' \describe{
@@ -201,15 +207,13 @@ draw_from_dist <- function(spec) {
 #' @param drift Numeric. Annual drift rate for GBM (mu). Default 0.
 #' @param volatility Numeric. Annual volatility (sigma). Default 0.2.
 #'   For GBM this is proportional volatility (e.g., 0.20 = 20\% per year).
-#'   For OU this is absolute volatility in price units (e.g., 45 = $45/MBF).
+#'   For OU this is absolute volatility in price units (e.g., 45 = $45/MBF),
+#'   which is internally converted to log-space volatility via
+#'   \code{sigma_x = sigma / theta}.
 #' @param mean_reversion_rate Numeric. Speed of mean reversion for OU (kappa).
 #'   Half-life of deviation = ln(2)/kappa. Required when process = "ou".
 #' @param long_run_mean Numeric. Long-run equilibrium price for OU (theta).
-#'   Required when process = "ou".
-#' @param price_floor Numeric or NULL. Minimum price floor. For the OU process,
-#'   which can produce negative prices, this prevents economically nonsensical
-#'   values. Default \code{0} (prices cannot go negative). Set to \code{NULL}
-#'   to disable the floor.
+#'   Must be positive. Required when process = "ou".
 #' @param n_paths Integer. Number of price paths to simulate. Default 1.
 #' @param seed Integer or NULL. Random seed.
 #'
@@ -267,7 +271,6 @@ stochastic_prices <- function(n_periods, initial_price,
                                drift = 0, volatility = 0.2,
                                mean_reversion_rate = NULL,
                                long_run_mean = NULL,
-                               price_floor = 0,
                                n_paths = 1, seed = NULL) {
   process <- match.arg(process)
 
@@ -279,6 +282,12 @@ stochastic_prices <- function(n_periods, initial_price,
     }
     if (is.null(long_run_mean)) {
       stop("'long_run_mean' (theta) is required for OU process", call. = FALSE)
+    }
+    if (long_run_mean <= 0) {
+      stop("'long_run_mean' must be positive for the exponential OU process", call. = FALSE)
+    }
+    if (initial_price <= 0) {
+      stop("'initial_price' must be positive for the exponential OU process", call. = FALSE)
     }
   }
 
@@ -292,24 +301,31 @@ stochastic_prices <- function(n_periods, initial_price,
     z <- stats::rnorm(n_paths)
 
     if (process == "gbm") {
-      # Euler-Maruyama discretization of GBM
+      # Exact solution for GBM (not Euler-Maruyama)
       # P(t+1) = P(t) * exp((mu - 0.5*sigma^2)*dt + sigma*sqrt(dt)*Z)
       prices[t + 1, ] <- prices[t, ] * exp(
         (drift - 0.5 * volatility^2) * dt + volatility * sqrt(dt) * z
       )
     } else {
-      # Euler-Maruyama discretization of OU
-      # P(t+1) = P(t) + kappa*(theta - P(t))*dt + sigma*sqrt(dt)*Z
+      # Exponential (geometric) OU process in log-space
+      # X = log(P) follows: dX = kappa*(mu_star - X)*dt + sigma_x*dW
+      # This guarantees P > 0 and preserves mean-reversion
       kappa <- mean_reversion_rate
       theta <- long_run_mean
-      prices[t + 1, ] <- prices[t, ] +
-        kappa * (theta - prices[t, ]) * dt +
-        volatility * sqrt(dt) * z
-    }
 
-    # Apply price floor if specified
-    if (!is.null(price_floor)) {
-      prices[t + 1, ] <- pmax(prices[t + 1, ], price_floor)
+      # Convert absolute volatility ($/unit) to log-space volatility
+      sigma_x <- volatility / theta
+
+      # Jensen's correction: ensures E[P_inf] = theta
+      # Stationary variance of X is sigma_x^2 / (2*kappa)
+      # E[exp(X)] = exp(mu_star + sigma_x^2/(4*kappa)) = theta
+      # => mu_star = log(theta) - sigma_x^2 / (4*kappa)
+      mu_star <- log(theta) - sigma_x^2 / (4 * kappa)
+
+      log_prices <- log(prices[t, ])
+      log_prices <- log_prices + kappa * (mu_star - log_prices) * dt +
+        sigma_x * sqrt(dt) * z
+      prices[t + 1, ] <- exp(log_prices)
     }
   }
 

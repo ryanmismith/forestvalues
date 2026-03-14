@@ -101,28 +101,28 @@ test_that("risk_metrics works with mc_forest object", {
   expect_true(is.numeric(metrics$var))
 })
 
-test_that("stochastic_prices OU enforces price floor by default", {
-  # Use high volatility and low initial price to trigger negative values
-  # without a floor
+test_that("stochastic_prices OU guarantees positive prices (exponential OU)", {
+  # High volatility, low initial price -- arithmetic OU would go negative
   paths <- stochastic_prices(50, 5, "ou", volatility = 10,
                               mean_reversion_rate = 0.1, long_run_mean = 5,
                               n_paths = 100, seed = 42)
-  expect_true(all(paths >= 0))  # default floor = 0
+  expect_true(all(paths > 0))  # exponential OU is always positive
 })
 
-test_that("stochastic_prices OU allows negative prices when floor is NULL", {
-  paths <- stochastic_prices(50, 5, "ou", volatility = 10,
-                              mean_reversion_rate = 0.1, long_run_mean = 5,
-                              price_floor = NULL,
-                              n_paths = 100, seed = 42)
-  # With high volatility and low price, some negatives are likely
-  expect_true(is.numeric(paths))
+test_that("stochastic_prices OU is unbiased (Jensen's correction)", {
+  # With many paths over long horizon, mean should converge to theta
+  paths <- stochastic_prices(100, 280, "ou", volatility = 45,
+                              mean_reversion_rate = 0.20, long_run_mean = 280,
+                              n_paths = 5000, seed = 42)
+  final_mean <- mean(paths[101, ])
+  # Should be close to theta = 280, within ~5%
+  expect_true(abs(final_mean - 280) / 280 < 0.05)
 })
 
-test_that("stochastic_prices respects custom price floor", {
-  paths <- stochastic_prices(30, 50, "ou", volatility = 20,
-                              mean_reversion_rate = 0.1, long_run_mean = 50,
-                              price_floor = 10,
-                              n_paths = 50, seed = 42)
-  expect_true(all(paths >= 10))
+test_that("stochastic_prices OU rejects non-positive long_run_mean", {
+  expect_error(
+    stochastic_prices(30, 50, "ou", volatility = 5,
+                      mean_reversion_rate = 0.1, long_run_mean = -10),
+    "must be positive"
+  )
 })
