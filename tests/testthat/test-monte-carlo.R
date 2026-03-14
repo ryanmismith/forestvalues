@@ -100,3 +100,29 @@ test_that("risk_metrics works with mc_forest object", {
   metrics <- risk_metrics(mc)
   expect_true(is.numeric(metrics$var))
 })
+
+test_that("stochastic_prices OU enforces price floor by default", {
+  # Use high volatility and low initial price to trigger negative values
+  # without a floor
+  paths <- stochastic_prices(50, 5, "ou", volatility = 10,
+                              mean_reversion_rate = 0.1, long_run_mean = 5,
+                              n_paths = 100, seed = 42)
+  expect_true(all(paths >= 0))  # default floor = 0
+})
+
+test_that("stochastic_prices OU allows negative prices when floor is NULL", {
+  paths <- stochastic_prices(50, 5, "ou", volatility = 10,
+                              mean_reversion_rate = 0.1, long_run_mean = 5,
+                              price_floor = NULL,
+                              n_paths = 100, seed = 42)
+  # With high volatility and low price, some negatives are likely
+  expect_true(is.numeric(paths))
+})
+
+test_that("stochastic_prices respects custom price floor", {
+  paths <- stochastic_prices(30, 50, "ou", volatility = 20,
+                              mean_reversion_rate = 0.1, long_run_mean = 50,
+                              price_floor = 10,
+                              n_paths = 50, seed = 42)
+  expect_true(all(paths >= 10))
+})

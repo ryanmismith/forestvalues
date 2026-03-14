@@ -72,3 +72,41 @@ test_that("npv_schedule validates inputs", {
   bad_schedule <- data.frame(amount = 100, year = 0, frequency = "invalid")
   expect_error(npv_schedule(bad_schedule, 0.06, 30), "Invalid frequency")
 })
+
+test_that("npv_schedule handles rate = 0 for annual payments", {
+  schedule <- data.frame(
+    amount = c(-100),
+    year = c(0),
+    frequency = c("annual"),
+    period_length = c(NA)
+  )
+  # At rate 0, PV of $100/yr for years 0-10 = 100 * 11 = 1100
+  result <- npv_schedule(schedule, 0, 10)
+  expect_equal(result, -1100)
+})
+
+test_that("npv_schedule handles rate = 0 for periodic payments", {
+  schedule <- data.frame(
+    amount = c(-500),
+    year = c(0),
+    frequency = c("periodic"),
+    period_length = c(5)
+  )
+  # At rate 0, payments at years 0, 5, 10 = 3 payments of $500
+  result <- npv_schedule(schedule, 0, 10)
+  expect_equal(result, -1500)
+})
+
+test_that("npv_schedule handles periodic flows starting after year 0", {
+  schedule <- data.frame(
+    amount = c(-500),
+    year = c(5),
+    frequency = c("periodic"),
+    period_length = c(10)
+  )
+  # Periodic $500 starting at year 5 with period 10, horizon 30
+  # years_remaining = 25, PV at year 5. Then discount to year 0
+  result <- npv_schedule(schedule, 0.06, 30)
+  expect_true(is.numeric(result))
+  expect_true(result < 0)  # costs are negative
+})

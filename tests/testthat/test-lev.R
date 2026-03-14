@@ -42,3 +42,7 @@ test_that("higher discount rates reduce LEV", {
   lev_high <- lev(50000, 40, 0.08)
   expect_true(lev_low > lev_high)
 })
+
+test_that("lev rejects zero discount rate", {
+  expect_error(lev(50000, 40, 0), "must be positive")
+})

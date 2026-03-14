@@ -206,6 +206,10 @@ draw_from_dist <- function(spec) {
 #'   Half-life of deviation = ln(2)/kappa. Required when process = "ou".
 #' @param long_run_mean Numeric. Long-run equilibrium price for OU (theta).
 #'   Required when process = "ou".
+#' @param price_floor Numeric or NULL. Minimum price floor. For the OU process,
+#'   which can produce negative prices, this prevents economically nonsensical
+#'   values. Default \code{0} (prices cannot go negative). Set to \code{NULL}
+#'   to disable the floor.
 #' @param n_paths Integer. Number of price paths to simulate. Default 1.
 #' @param seed Integer or NULL. Random seed.
 #'
@@ -263,6 +267,7 @@ stochastic_prices <- function(n_periods, initial_price,
                                drift = 0, volatility = 0.2,
                                mean_reversion_rate = NULL,
                                long_run_mean = NULL,
+                               price_floor = 0,
                                n_paths = 1, seed = NULL) {
   process <- match.arg(process)
 
@@ -300,6 +305,11 @@ stochastic_prices <- function(n_periods, initial_price,
       prices[t + 1, ] <- prices[t, ] +
         kappa * (theta - prices[t, ]) * dt +
         volatility * sqrt(dt) * z
+    }
+
+    # Apply price floor if specified
+    if (!is.null(price_floor)) {
+      prices[t + 1, ] <- pmax(prices[t + 1, ], price_floor)
     }
   }
 

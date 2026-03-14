@@ -40,3 +40,16 @@ test_that("update_prices adjusts for inflation", {
   expected <- 100 * (1.03)^5
   expect_equal(updated$price, expected)
 })
+
+test_that("stumpage_value warns for $0 price species", {
+  expect_warning(
+    suppressMessages(stumpage_value("JP", 10, "sawlog")),
+    "is \\$0 in the price table"
+  )
+})
+
+test_that("stumpage_value returns $0 value for $0 price species", {
+  result <- suppressWarnings(suppressMessages(stumpage_value("JP", 10, "sawlog")))
+  expect_equal(result$unit_price, 0)
+  expect_equal(result$total_value, 0)
+})

@@ -368,6 +368,13 @@ depletion_schedule <- function(initial_basis, initial_volume, harvests,
 #' Cost basis depletion is allocated proportionally across revenue cash
 #' flows (by revenue amount).
 #'
+#' **Important simplification:** All negative cash flows are treated as
+#' fully deductible expenses in the year incurred. In practice, some
+#' forestry costs (e.g., certain carrying charges, land improvements) must
+#' be capitalized under IRC Section 263A rather than expensed immediately.
+#' This function may therefore overstate the tax benefit of cost deductions.
+#' Consult a tax professional for site-specific treatment of forestry costs.
+#'
 #' @references
 #' Klemperer, W.D. (1996). *Forest Resource Economics and Finance*.
 #' McGraw-Hill. Ch. 5 (Taxes and Forest Valuation).

@@ -92,6 +92,12 @@ stumpage_value <- function(species, volume, product_class = "sawlog",
       price_table$product_class == product_class[i]
     if (any(match_rows)) {
       price <- price_table$price[which(match_rows)[1]]
+      if (price == 0) {
+        warning("Price for species '", species[i], "' (product class: '",
+                product_class[i], "') is $0 in the price table. ",
+                "This may indicate missing market data. Verify this is intentional.",
+                call. = FALSE)
+      }
       results$unit_price[i] <- price
       # Unit conversion is handled by the price table: sawlog prices are $/MBF,
       # pulp prices are $/ton. Volume must match the price table's unit.
